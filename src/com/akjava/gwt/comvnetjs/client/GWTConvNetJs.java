@@ -24,6 +24,8 @@ import com.akjava.gwt.lib.client.ImageElementUtils;
 import com.akjava.gwt.lib.client.LogUtils;
 import com.akjava.gwt.lib.client.experimental.ExecuteButton;
 import com.akjava.gwt.lib.client.experimental.RectCanvasUtils;
+import com.akjava.gwt.lib.client.experimental.lbp.ByteImageDataConverter;
+import com.akjava.gwt.lib.client.experimental.lbp.LBP;
 import com.akjava.gwt.lib.client.experimental.opencv.CVImageeData;
 import com.akjava.gwt.lib.client.widget.PanelUtils;
 import com.akjava.lib.common.graphics.Rect;
@@ -36,6 +38,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
 import com.google.common.primitives.Doubles;
 import com.google.gwt.canvas.client.Canvas;
+import com.google.gwt.canvas.dom.client.ImageData;
 import com.google.gwt.core.client.EntryPoint;
 import com.google.gwt.dom.client.ImageElement;
 import com.google.gwt.dom.client.Style.Unit;
@@ -61,7 +64,6 @@ import com.google.gwt.user.client.ui.Label;
 import com.google.gwt.user.client.ui.ListBox;
 import com.google.gwt.user.client.ui.RootLayoutPanel;
 import com.google.gwt.user.client.ui.ScrollPanel;
-import com.google.gwt.user.client.ui.ValueListBox;
 import com.google.gwt.user.client.ui.VerticalPanel;
 
 /**
@@ -91,8 +93,8 @@ public class GWTConvNetJs implements EntryPoint {
 	private List<CascadeNet> cascades=Lists.newArrayList();
 	private ExecuteButton trainSecondBt;
 	
-	private CVImageZip negativesZip;
-	private CVImageZip positivesZip;
+	private LBPImageZip negativesZip;
+	private LBPImageZip positivesZip;
 	final int classNumber=2;
 	
 	private String lastJson;
@@ -100,6 +102,30 @@ public class GWTConvNetJs implements EntryPoint {
 	private CascadeNet dummyCascade;
 	private void doUndo(){
 		fromJson(lastJson);
+	}
+	
+	private static Canvas lbpCanvas=Canvas.createIfSupported();//
+	
+	public class LBPImageZip extends CVImageZip{
+		
+		public LBPImageZip(ArrayBuffer buffer) {
+			super(buffer);
+			
+		}
+		
+		protected ImageElement doFilter(ImageElement image) {
+			ImageElementUtils.copytoCanvas(image, lbpCanvas);
+			ByteImageDataConverter converter=new ByteImageDataConverter(4,lbpCanvas.getContext2d(),true);
+			//PROPOSE ImageDataUtils.createFrom(Canvas);
+			double[][] bytes=converter.convert(lbpCanvas.getContext2d().getImageData(0, 0, lbpCanvas.getCoordinateSpaceWidth(), lbpCanvas.getCoordinateSpaceHeight()));
+			
+			ImageData imageData=converter.reverse().convert(LBP.convertLBP(4,4,bytes));
+			CanvasUtils.createCanvas(lbpCanvas, imageData);
+			
+			//PROPOSE ImageElementUtils.createPngFrom(Canvas);
+			return ImageElementUtils.create(lbpCanvas.toDataUrl());
+		}
+		
 	}
 	
 	public void onModuleLoad() {
@@ -443,8 +469,14 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 			
 		root.add(trainPositive);
 		
+		//final String positiveImageName="opencv-pos-images_all.zip";
+		
+		//maybe it's better to use lbp-cropped when export images.
+		
+		final String positiveImageName="posimages.zip";
+		final boolean isCroppedImage=true;
 		//posimages.zip is cropped positive images around 1200-2500
-BrowserUtils.loadBinaryFile("posimages.zip",new LoadBinaryListener() {
+BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 	
 			
 
@@ -452,11 +484,26 @@ BrowserUtils.loadBinaryFile("posimages.zip",new LoadBinaryListener() {
 			public void onLoadBinaryFile(ArrayBuffer buffer) {
 				
 				Stopwatch watch=Stopwatch.createStarted();
-				positivesZip=new CVImageZip(buffer);
+				positivesZip=new LBPImageZip(buffer);
+				positivesZip.setName(positiveImageName);
 				
 				checkState(positivesZip.size()>0,"info.txt or info.dat is empty");
 				
 				positivesZip.shuffle();
+				
+				//cropped image need slash edges.
+				if(isCroppedImage){
+				for(CVImageeData data:positivesZip.getDatas()){
+					for(Rect rect:data.getRects()){
+					//	LogUtils.log("before:"+rect.toString());
+						rect.expand(-8, -8).copyTo(rect);//because LBP edge seems problem,I have no idea.
+						
+						//this already too much lost image info.
+						
+					//	LogUtils.log("after:"+rect.toString());
+					}
+				}
+				}
 				
 				//loadZip();//need this
 				
@@ -471,7 +518,7 @@ BrowserUtils.loadBinaryFile("posimages.zip",new LoadBinaryListener() {
 			}
 		});
 
-String negativeImageName="bg.zip";//"nose-inpainted-faces.zip"
+final String negativeImageName="bg2.zip";//"nose-inpainted-faces.zip"
 BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	
 	
@@ -484,7 +531,8 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		
 		Stopwatch watch=Stopwatch.createStarted();
 	
-		negativesZip=new CVImageZip(buffer);
+		negativesZip=new LBPImageZip(buffer);
+		negativesZip.setName(negativeImageName);
 		negativesZip.shuffle();//negative file need shuffle?
 		checkState(negativesZip.size()>0,"some how empty zip or index/bg");
 		
@@ -603,7 +651,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 				CanvasUtils.clear(resizedCanvas);
 			
 				resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
-				Vol vol=ConvnetJs.createGrayVol(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+				Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 				getLastCascade().getTrainer().train(vol, 0);
 				trained++;
 				trainedPositiveDatas.add(vol);
@@ -689,7 +737,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 				CanvasUtils.clear(resizedCanvas);
 				
 				resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
-				Vol vol=ConvnetJs.createGrayVol(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+				Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 				getLastCascadesTrainer().train(vol, 0);
 				trained++;
 			}
@@ -708,7 +756,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			ImageElementUtils.copytoCanvas(dataUrl, sharedCanvas);
 				
 				resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
-				Vol vol=ConvnetJs.createGrayVol(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+				Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 				cascades.get(cascades.size()-1).getTrainer().train(vol, 0);
 				trained++;
 		}
@@ -745,7 +793,19 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		int minH=24;
 		double min_scale=1.6;//no need really small pixel
 		Canvas grayscaleCanvas=Canvas.createIfSupported();
-		CanvasUtils.convertToGrayScale(canvas,grayscaleCanvas);
+		
+		//make method to use same Convert way
+		ByteImageDataConverter converter=new ByteImageDataConverter(4,grayscaleCanvas.getContext2d(),true);
+		//PROPOSE ImageDataUtils.createFrom(Canvas);
+		double[][] bytes=converter.convert(canvas.getContext2d().getImageData(0, 0, canvas.getCoordinateSpaceWidth(), canvas.getCoordinateSpaceHeight()));
+		
+		ImageData imageData=converter.reverse().convert(LBP.convertLBP(4,4,bytes));
+		CanvasUtils.createCanvas(grayscaleCanvas, imageData);
+		
+		
+		
+		//grayscaleCanvas=CanvasUtils.copyTo(canvas, grayscaleCanvas, true);//test image is LBP just copy here
+		//CanvasUtils.convertToGrayScale(canvas,grayscaleCanvas);//TODO convert LBP here
 		
 		while(minW*min_scale<canvas.getCoordinateSpaceWidth() && minH*min_scale<canvas.getCoordinateSpaceHeight()){
 			detectImage(minW,minH,stepScale,min_scale,grayscaleCanvas);
@@ -972,7 +1032,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			CanvasUtils.clear(resizedCanvas);
 		
 			resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
-			Vol vol=ConvnetJs.createGrayVol(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+			Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 			
 			cascadeNet.getTrainer().train(vol, 0);
 			trained++;
@@ -1081,7 +1141,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 				RectCanvasUtils.crop(baseImage, r, sharedCanvas);
 				CanvasUtils.clear(resizedCanvas);
 				resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
-				Vol vol=ConvnetJs.createGrayVol(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+				Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 				
 				Optional<Vol> optional=cascadeNet.filterParents(vol);
 				if(optional.isPresent()){
@@ -1270,7 +1330,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			RectCanvasUtils.crop(testImage, rect, sharedCanvas);
 			CanvasUtils.clear(resizedCanvas);
 			resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
-			Vol vol=ConvnetJs.createGrayVol(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+			Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 			
 			
 			Vol vol2=getLastCascadesNet().forward(vol);
@@ -1337,7 +1397,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			RectCanvasUtils.crop(testImage, rect, sharedCanvas);
 			CanvasUtils.clear(resizedCanvas);
 			resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
-			Vol vol=ConvnetJs.createGrayVol(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+			Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 			
 			
 			Vol vol2=getLastCascadesNet().forward(vol);
@@ -1445,7 +1505,7 @@ public void doTestCascadeReal(CascadeNet cascade){
 			CanvasUtils.clear(resizedCanvas);
 			resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
 			
-			Vol vol=ConvnetJs.createGrayVol(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+			Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 			
 			
 			Vol vol2=cascade.getNet().forward(vol);
@@ -1542,7 +1602,7 @@ public void doTestCascadeReal(CascadeNet cascade){
 			CanvasUtils.clear(resizedCanvas);
 			resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
 			
-			Vol vol=ConvnetJs.createGrayVol(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+			Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 			
 			
 			Vol vol2=cascade.getNet().forward(vol);
@@ -1604,13 +1664,13 @@ public void doTestCascadeReal(CascadeNet cascade){
 		for(int j=0;j<20;j++){
 		int index=getRandom(0, negativesZip.size());
 		CVImageeData pdata=negativesZip.get(index);
-		String extension=FileNames.getExtension(pdata.getFileName());
-		FileType type=FileType.getFileTypeByExtension(extension);//need to know jpeg or png
+		//String extension=FileNames.getExtension(pdata.getFileName());
+		//FileType type=FileType.getFileTypeByExtension(extension);//need to know jpeg or png
 		//byte[] bt=imgFile.asUint8Array().toByteArray();
 		//this action kill 
 		Optional<ImageElement> optional=negativesZip.getImageElement(pdata);
 		if(!optional.isPresent()){
-			LogUtils.log("skip.image not found in zip:"+pdata.getFileName());
+			LogUtils.log("skip.image not found in zip(or filter faild):"+pdata.getFileName()+" of "+negativesZip.getName());
 			continue;
 		}
 		
@@ -1644,7 +1704,7 @@ public void doTestCascadeReal(CascadeNet cascade){
 			RectCanvasUtils.crop(testImage, r, sharedCanvas);
 			CanvasUtils.clear(resizedCanvas);
 			resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
-			Vol vol=ConvnetJs.createGrayVol(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+			Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 			lastDataUrl=resizedCanvas.toDataUrl();
 			//LogUtils.log("randomVol:"+pdata.getFileName()+":"+r.toKanmaString());
 			return Optional.of(vol);
@@ -1652,6 +1712,16 @@ public void doTestCascadeReal(CascadeNet cascade){
 		}
 		return Optional.absent();
 	}
+	
+	boolean isAllImageGrayscale=true;
+	private Vol createVolFromImageData(ImageData imageData){
+		if(isAllImageGrayscale){
+			return ConvnetJs.createGrayVolFromGrayScaleImage(imageData);
+		}else{
+			return ConvnetJs.createGrayVolFromRGBImage(imageData);
+		}
+	}
+	
 	
 	@SuppressWarnings("unchecked")
 	private List<Rect> loadRect(ImageElement image, String fileName) {
@@ -1712,7 +1782,7 @@ public void doTestCascadeReal(CascadeNet cascade){
 				RectCanvasUtils.crop(testImage, r, sharedCanvas);
 				CanvasUtils.clear(resizedCanvas);
 				resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
-				Vol vol=ConvnetJs.createGrayVol(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+				Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 				lastDataUrl=resizedCanvas.toDataUrl();
 				//LogUtils.log("randomVol:"+pdata.getFileName()+":"+r.toKanmaString());
 				return vol;

@@ -79,6 +79,9 @@ public Optional<ImageElement> getImageElement(CVImageeData data){
 		FileType type=FileType.getFileTypeByExtension(extension);//need to know jpeg or png
 		String dataUrl=Base64Utils.toDataUrl(type.getMimeType(),imgFile.asUint8Array().toByteArray());//should use cache 300MB etc
 		image=ImageElementUtils.create(dataUrl);
+		
+		image=doFilter(image);
+		
 		if(useCache){
 			cachedImageElement.put(data.getFileName(), image);
 		}
@@ -86,6 +89,12 @@ public Optional<ImageElement> getImageElement(CVImageeData data){
 	return Optional.of(image);
 }
 	
+//for future use
+protected ImageElement doFilter(ImageElement image) {
+	
+	return image;
+}
+
 public void setUseCache(boolean useCache) {
 	this.useCache = useCache;
 }

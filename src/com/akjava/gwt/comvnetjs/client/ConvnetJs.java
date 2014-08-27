@@ -55,7 +55,7 @@ public class ConvnetJs {
 		
 	}
 	
-	public static Vol createGrayVol(ImageData imageData){
+	public static Vol createGrayVolFromRGBImage(ImageData imageData){
 		Vol vol=createVol(imageData.getWidth(),imageData.getHeight(),3,0);
 		for(int y=0;y<imageData.getHeight();y++){
 			for(int x=0;x<imageData.getWidth();x++){
