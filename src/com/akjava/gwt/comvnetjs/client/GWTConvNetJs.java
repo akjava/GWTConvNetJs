@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import com.akjava.gwt.html5.client.download.HTML5Download;
@@ -24,8 +25,8 @@ import com.akjava.gwt.lib.client.ImageElementUtils;
 import com.akjava.gwt.lib.client.LogUtils;
 import com.akjava.gwt.lib.client.experimental.ExecuteButton;
 import com.akjava.gwt.lib.client.experimental.RectCanvasUtils;
-import com.akjava.gwt.lib.client.experimental.lbp.ByteImageDataConverter;
-import com.akjava.gwt.lib.client.experimental.lbp.LBP;
+import com.akjava.gwt.lib.client.experimental.lbp.ByteImageDataIntConverter;
+import com.akjava.gwt.lib.client.experimental.lbp.SimpleLBP;
 import com.akjava.gwt.lib.client.experimental.opencv.CVImageeData;
 import com.akjava.gwt.lib.client.widget.PanelUtils;
 import com.akjava.lib.common.graphics.Rect;
@@ -36,6 +37,7 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Optional;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import com.google.common.primitives.Doubles;
 import com.google.gwt.canvas.client.Canvas;
 import com.google.gwt.canvas.dom.client.ImageData;
@@ -85,7 +87,8 @@ public class GWTConvNetJs implements EntryPoint {
 	private HorizontalPanel faildNegativePanel;
 	
 	//private List<CVImageeData> testDatas=new ArrayList<CVImageeData>();
-	private List<Vol> trainedPositiveDatas=new ArrayList<Vol>();
+	//private List<Vol> trainedPositiveDatas=new ArrayList<Vol>();
+	private List<PassedData> trainedPositiveDatas=new ArrayList<GWTConvNetJs.PassedData>();
 	private HorizontalPanel faildPosPanel;
 	
 	private Canvas anotherCanvas;
@@ -93,8 +96,8 @@ public class GWTConvNetJs implements EntryPoint {
 	private List<CascadeNet> cascades=Lists.newArrayList();
 	private ExecuteButton trainSecondBt;
 	
-	private LBPImageZip negativesZip;
-	private LBPImageZip positivesZip;
+	private CVImageZip negativesZip;
+	private CVImageZip positivesZip;
 	final int classNumber=2;
 	
 	private String lastJson;
@@ -107,6 +110,8 @@ public class GWTConvNetJs implements EntryPoint {
 	private static Canvas lbpCanvas=Canvas.createIfSupported();//
 	
 	public class LBPImageZip extends CVImageZip{
+		private ByteImageDataIntConverter converter=new ByteImageDataIntConverter(lbpCanvas.getContext2d(),true);
+	
 		
 		public LBPImageZip(ArrayBuffer buffer) {
 			super(buffer);
@@ -115,11 +120,11 @@ public class GWTConvNetJs implements EntryPoint {
 		
 		protected ImageElement doFilter(ImageElement image) {
 			ImageElementUtils.copytoCanvas(image, lbpCanvas);
-			ByteImageDataConverter converter=new ByteImageDataConverter(4,lbpCanvas.getContext2d(),true);
-			//PROPOSE ImageDataUtils.createFrom(Canvas);
-			double[][] bytes=converter.convert(lbpCanvas.getContext2d().getImageData(0, 0, lbpCanvas.getCoordinateSpaceWidth(), lbpCanvas.getCoordinateSpaceHeight()));
 			
-			ImageData imageData=converter.reverse().convert(LBP.convertLBP(4,4,bytes));
+			//PROPOSE ImageDataUtils.createFrom(Canvas);
+			int[][] bytes=converter.convert(lbpCanvas.getContext2d().getImageData(0, 0, lbpCanvas.getCoordinateSpaceWidth(), lbpCanvas.getCoordinateSpaceHeight()));
+			
+			ImageData imageData=converter.reverse().convert(lbpConverter.convert(bytes));
 			CanvasUtils.createCanvas(lbpCanvas, imageData);
 			
 			//PROPOSE ImageElementUtils.createPngFrom(Canvas);
@@ -162,7 +167,8 @@ public class GWTConvNetJs implements EntryPoint {
 					@Override
 					public void run() {
 						//detectImage(anotherCanvas,8,2.4);//1.2 is default (1-16,1.2 - 3.6)
-						detectImage(anotherCanvas,4,1.6);//1.2 is default (1-16,1.2 - 3.6)
+						//detectImage(anotherCanvas,4,1.6);
+						detectImage(anotherCanvas,6,1.8);
 						
 					}};
 				timer.schedule(100);
@@ -246,7 +252,7 @@ public class GWTConvNetJs implements EntryPoint {
 			
 			
 		};
-		root.add(trainSecondBt);
+		//root.add(trainSecondBt);
 		
 		ExecuteButton trainPositiveBt = new ExecuteButton("Add New Cascade & Train Positive"){
 
@@ -272,6 +278,8 @@ public class GWTConvNetJs implements EntryPoint {
 				
 				passedVols.clear();
 				//trainPositiveOnly();
+				ignoreList.addAll(temporalyIgnoreList);
+				temporalyIgnoreList.clear();
 			}
 			
 			
@@ -367,7 +375,7 @@ Button bt2=new Button("Do Test Last Cascade first 100 item(quick but not real vo
 				doTestCascade(cascades.get(cascades.size()-1));
 			}
 		});
-		root.add(bt2);
+		//root.add(bt2);
 		
 Button bt2b=new Button("Do Test Last Cascade first 100 item Passed parent filters Vol",new ClickHandler() {
 			
@@ -387,7 +395,7 @@ Button btSecond=new Button("Do Test2(all positive datas) at Last-Cascade",new Cl
 				doTestAllPositivesAtLastCascade();
 			}
 		});
-		root.add(btSecond);
+		//root.add(btSecond);
 		
 Button bt3=new Button("Do Test3(only if train root)",new ClickHandler() {
 			
@@ -396,7 +404,7 @@ Button bt3=new Button("Do Test3(only if train root)",new ClickHandler() {
 				doTest3();
 			}
 		});
-		root.add(bt3);
+		//root.add(bt3);
 		
 		/*
 Button saveBt=new Button("Save",new ClickHandler() {//deprecated for first 
@@ -439,6 +447,7 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 			public void executeOnClick() {
 				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
 				doTrain(v,true);
+				doTest3();
 			}
 			
 		};
@@ -451,6 +460,7 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 			public void executeOnClick() {
 				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
 				doTrain(v,false);
+				doTest3();
 			}
 			
 		};
@@ -467,7 +477,7 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 			
 		};
 			
-		root.add(trainPositive);
+		//root.add(trainPositive);
 		
 		//final String positiveImageName="opencv-pos-images_all.zip";
 		
@@ -484,7 +494,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 			public void onLoadBinaryFile(ArrayBuffer buffer) {
 				
 				Stopwatch watch=Stopwatch.createStarted();
-				positivesZip=new LBPImageZip(buffer);
+				positivesZip=new CVImageZip(buffer);
 				positivesZip.setName(positiveImageName);
 				
 				checkState(positivesZip.size()>0,"info.txt or info.dat is empty");
@@ -496,7 +506,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 				for(CVImageeData data:positivesZip.getDatas()){
 					for(Rect rect:data.getRects()){
 					//	LogUtils.log("before:"+rect.toString());
-						rect.expand(-8, -8).copyTo(rect);//because LBP edge seems problem,I have no idea.
+						rect.expand(-2, -2).copyTo(rect);//because LBP 1 neibors has problem
 						
 						//this already too much lost image info.
 						
@@ -531,7 +541,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		
 		Stopwatch watch=Stopwatch.createStarted();
 	
-		negativesZip=new LBPImageZip(buffer);
+		negativesZip=new CVImageZip(buffer);
 		negativesZip.setName(negativeImageName);
 		negativesZip.shuffle();//negative file need shuffle?
 		checkState(negativesZip.size()>0,"some how empty zip or index/bg");
@@ -570,6 +580,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			@Override
 			public void executeOnClick() {
 				retrainFaildPositives();
+				doTest3();
 			}
 		};
 		fpPanel.add(retrainFaildPos);
@@ -618,9 +629,14 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		});
 		result.add(test);
 	}
-
+	
+	private Set<String> ignoreList=Sets.newHashSet();
+	private Set<String> temporalyIgnoreList=Sets.newHashSet();
+	
 	protected void doTrain(int rate,boolean initial) {
 
+		
+		
 		trainedPositiveDatas.clear();
 		Stopwatch watch=Stopwatch.createStarted();
 		int trained=0;
@@ -647,6 +663,13 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			//generate canvas for image
 			
 			for(Rect rect:pdata.getRects()){
+				String path=pdata.getFileName()+"#"+rect.toString();
+				if(ignoreList.contains(path)){
+					LogUtils.log("ignore-train:"+path);
+					continue;//already dropped data skip
+				}
+				
+				
 				RectCanvasUtils.crop(baseImage, rect, sharedCanvas);
 				CanvasUtils.clear(resizedCanvas);
 			
@@ -654,7 +677,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 				Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 				getLastCascade().getTrainer().train(vol, 0);
 				trained++;
-				trainedPositiveDatas.add(vol);
+				trainedPositiveDatas.add(new PassedData(vol, path));
 				
 			
 				int m=trained%rate;
@@ -767,7 +790,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 
 	//private ArrayList<CVImageeData> negativeImagesData;
 	
-
+	 final SimpleLBP lbpConverter=new SimpleLBP(true, false);//share
 	
 	int count=0;
 	List<ConfidenceRect> mutchRect=Lists.newArrayList();
@@ -792,15 +815,18 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		int minW=26;//TODO change based clip
 		int minH=24;
 		double min_scale=1.6;//no need really small pixel
-		Canvas grayscaleCanvas=Canvas.createIfSupported();
+		Canvas grayscaleCanvasForDetector=Canvas.createIfSupported();
+		
+		
+		
 		
 		//make method to use same Convert way
-		ByteImageDataConverter converter=new ByteImageDataConverter(4,grayscaleCanvas.getContext2d(),true);
+		ByteImageDataIntConverter converter=new ByteImageDataIntConverter(grayscaleCanvasForDetector.getContext2d(),true);
 		//PROPOSE ImageDataUtils.createFrom(Canvas);
-		double[][] bytes=converter.convert(canvas.getContext2d().getImageData(0, 0, canvas.getCoordinateSpaceWidth(), canvas.getCoordinateSpaceHeight()));
+		int[][] bytes=converter.convert(canvas.getContext2d().getImageData(0, 0, canvas.getCoordinateSpaceWidth(), canvas.getCoordinateSpaceHeight()));
 		
-		ImageData imageData=converter.reverse().convert(LBP.convertLBP(4,4,bytes));
-		CanvasUtils.createCanvas(grayscaleCanvas, imageData);
+		ImageData imageData=converter.reverse().convert(lbpConverter.convert(bytes));
+		CanvasUtils.createCanvas(grayscaleCanvasForDetector, imageData);
 		
 		
 		
@@ -808,7 +834,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		//CanvasUtils.convertToGrayScale(canvas,grayscaleCanvas);//TODO convert LBP here
 		
 		while(minW*min_scale<canvas.getCoordinateSpaceWidth() && minH*min_scale<canvas.getCoordinateSpaceHeight()){
-			detectImage(minW,minH,stepScale,min_scale,grayscaleCanvas);
+			detectImage(minW,minH,stepScale,min_scale,grayscaleCanvasForDetector);
 			min_scale*=scale_factor;
 		}
 		LogUtils.log("try:"+count+",mutch:"+mutchRect.size()+","+watch.elapsed(TimeUnit.SECONDS)+"s");
@@ -1036,7 +1062,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			
 			cascadeNet.getTrainer().train(vol, 0);
 			trained++;
-			trainedPositiveDatas.add(vol);
+			trainedPositiveDatas.add(new PassedData(vol, pdata.getFileName()+"#"+rect.toString()));
 			//LogUtils.log("trained-positive:"+trained);
 			
 			Optional<Vol> neg= createRandomVol(cascadeNet);//finding data is really take time
@@ -1246,6 +1272,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	}
 	
 	public void doTest3(){//train 1200 = 24s
+		temporalyIgnoreList.clear();
 		
 		successPosPanel.clear();
 		faildPosPanel.clear();
@@ -1262,14 +1289,18 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		
 		LogUtils.log("test-size:"+trainedPositiveDatas.size());
 		
-		for(Vol vol:trainedPositiveDatas){
+		//trainedPositiveDatas.add(new PassedData(vol, pdata.getFileName()+"#"+rect.toString()));
+		
+		for(PassedData trainedData:trainedPositiveDatas){
 			
+			Vol vol=trainedData.getVol();
 			Vol vol2=getLastCascadesNet().forward(vol,true);
 			
 			if(vol2.getW(0)>vol2.getW(1)){
 				successMatch++;
 				//successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
 			}else{
+				temporalyIgnoreList.add(trainedData.getDataUrl());
 				faildMatch++;
 				//faildPosPanel.add(new Image(resizedCanvas.toDataUrl()));
 			}
@@ -1446,6 +1477,11 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	boolean trainSecond;
 	
 	List<PassedData> passedVols=Lists.newArrayList();
+	
+	
+	
+
+	
 	
 	public class PassedData{
 		private Vol vol;
