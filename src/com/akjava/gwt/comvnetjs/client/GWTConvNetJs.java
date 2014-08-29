@@ -694,9 +694,11 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	
 	
 	Net createNewNet(){
-		//i guess it's better? createGrayImageNet2
-		return ConvnetJs.createDepathNet(1,1,2, 10, 2);
-		//return ConvnetJs.createGrayImageNet(24, 24, classNumber);
+		
+		//return ConvnetJs.createDepathNet(1,1,2, 10, 2);//i tried int[] to softmax,but faild
+		
+		return ConvnetJs.createGrayImageNet(24, 24, classNumber);
+		
 	}
 	
 	
@@ -1870,10 +1872,11 @@ public void doTestCascadeReal(CascadeNet cascade){
 	}
 	
 	private int netWidth=24;
-	private int netheight=24;
+	private int netHeight=24;
 	
 	//expand net because of edge.
-	private Canvas resizedCanvas=CanvasUtils.createCanvas(netWidth+2, netheight+2);//fixed size //can i change?
+	private int edgeSize=2;//must be can divided 2
+	private Canvas resizedCanvas=CanvasUtils.createCanvas(netWidth+edgeSize, netHeight+edgeSize);//fixed size //can i change?
 	
 	private HorizontalPanel successPosPanel;
 	private ExecuteButton analyzeBt;
@@ -1942,7 +1945,7 @@ public void doTestCascadeReal(CascadeNet cascade){
 
 	private ValueListBox<Double> minRateBox;
 	private Vol createVolFromImageData(ImageData imageData){
-		if(imageData.getWidth()!=26 || imageData.getHeight()!=26){ //somehow still 26x26 don't care!
+		if(imageData.getWidth()!=netWidth+edgeSize || imageData.getHeight()!=netHeight+edgeSize){ //somehow still 26x26 don't care!
 			Window.alert("invalid size:"+imageData.getWidth()+","+imageData.getHeight());
 			return null;
 		}
@@ -1950,76 +1953,15 @@ public void doTestCascadeReal(CascadeNet cascade){
 			
 			//LBP here,now no effect on but edge problem possible happen
 			int[][] ints=byteDataIntConverter.convert(imageData); //convert color image to grayscale data
-			//int[][] data=lbpConverter.convert(ints);
-			
-			int[] histogram=lbpConverter.count(ints);
-			
-			int min=ints.length*ints[0].length;
-			for(int v:histogram){
-				if(v!=0 && v<min){
-					min=v;
+			int[][] data=lbpConverter.convert(ints);
+			int[][] cropped=new int[netWidth][netHeight];
+			for(int x=0;x<netWidth;x++){
+				for(int y=0;y<netHeight;y++){
+					cropped[x][y]=data[x+edgeSize/2][y+edgeSize/2];
 				}
 			}
 			
-			//max 576
-			
-			int[] normalized=new int[8];
-			for(int i=0;i<8;i++){
-				if(histogram[i]>0){
-					normalized[i]=Math.min(16,(int)(histogram[i]/36));//0-16
-				}
-			}
-			
-			//try normalize
-			
-			
-			//lbp has edge problem
-			/*
-			int[][] cropped=new int[24][24];
-			for(int x=0;x<24;x++){
-				for(int y=0;y<24;y++){
-					cropped[x][y]=data[x+1][y+1];
-				}
-			}
-			*/
-			
-			/*
-			for(int x=0;x<26;x++){
-				for(int y=0;y<26;y++){
-					for(int i=1;i<=8;){
-						if((1<<i & data[x][y])>0){
-							histogram[i-1]++;
-						}
-					}
-				}
-			}
-			*/
-			Vol vol=ConvnetJs.createVol(1, 1, 2, 0);
-			//Vol vol=ConvnetJs.createVol(1, 1, histogram.length, 0);
-			int r=getRandom(0, 100);
-			String debug="";
-			
-			//convert 2-dimension values
-			int v1=normalized[0] | (normalized[1]<<4) | (normalized[2]<<8) | (normalized[3]<<12);
-			int v2=normalized[4] | (normalized[5]<<4) | (normalized[6]<<8) | (normalized[7]<<12);
-			vol.set(0, 0, 1, v1);
-			vol.set(0, 0, 2, v2);
-			/*
-			for(int i=0;i<histogram.length;i++){//now changed 8x1x1
-				vol.set(i, 1, 8, normalized[i]);
-				if(r==50){
-					debug+=normalized[i]+",";
-				}
-			}
-			*/
-			
-			if(r==50){
-				LogUtils.log(v1+"-"+v2);
-			}
-			
-			return vol;
-			
-			//return ConvnetJs.createGrayVolFromGrayScaleImage(byteDataIntConverter.reverse().convert(cropped));
+			return ConvnetJs.createGrayVolFromGrayScaleImage(byteDataIntConverter.reverse().convert(cropped));
 		}else{
 			throw new RuntimeException("not support. now use 1x1x8 network");
 			//return ConvnetJs.createGrayVolFromRGBImage(imageData);

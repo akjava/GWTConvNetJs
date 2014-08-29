@@ -41,7 +41,7 @@ public class ConvnetJs {
 	layer_defs.push({type:'input', out_sx:w, out_sy:h, out_depth:1});
 	layer_defs.push({type:'conv', sx:2, filters:8, stride:1, pad:2, activation:'relu'});
 	layer_defs.push({type:'pool', sx:2, stride:2});
-	layer_defs.push({type:'conv', sx:3, filters:16, stride:1, pad:2, activation:'relu'});
+	layer_defs.push({type:'conv', sx:2, filters:16, stride:1, pad:2, activation:'relu'});
 	layer_defs.push({type:'pool', sx:3, stride:3});
 	layer_defs.push({type:'softmax', num_classes:classes});
 
