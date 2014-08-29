@@ -2,6 +2,7 @@ package com.akjava.gwt.comvnetjs.client;
 
 import static com.google.common.base.Preconditions.checkState;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -31,6 +32,7 @@ import com.akjava.gwt.lib.client.experimental.opencv.CVImageeData;
 import com.akjava.gwt.lib.client.widget.PanelUtils;
 import com.akjava.lib.common.graphics.Rect;
 import com.akjava.lib.common.io.FileType;
+import com.akjava.lib.common.utils.ColorUtils;
 import com.akjava.lib.common.utils.FileNames;
 import com.akjava.lib.common.utils.ListUtils;
 import com.google.common.base.Joiner;
@@ -52,8 +54,12 @@ import com.google.gwt.http.client.RequestCallback;
 import com.google.gwt.http.client.RequestException;
 import com.google.gwt.http.client.Response;
 import com.google.gwt.json.client.JSONArray;
+import com.google.gwt.json.client.JSONNumber;
+import com.google.gwt.json.client.JSONObject;
 import com.google.gwt.json.client.JSONParser;
+import com.google.gwt.json.client.JSONString;
 import com.google.gwt.json.client.JSONValue;
+import com.google.gwt.text.shared.Renderer;
 import com.google.gwt.typedarrays.shared.ArrayBuffer;
 import com.google.gwt.user.client.Timer;
 import com.google.gwt.user.client.Window;
@@ -66,6 +72,7 @@ import com.google.gwt.user.client.ui.Label;
 import com.google.gwt.user.client.ui.ListBox;
 import com.google.gwt.user.client.ui.RootLayoutPanel;
 import com.google.gwt.user.client.ui.ScrollPanel;
+import com.google.gwt.user.client.ui.ValueListBox;
 import com.google.gwt.user.client.ui.VerticalPanel;
 
 /**
@@ -146,7 +153,7 @@ public class GWTConvNetJs implements EntryPoint {
 		scroll.add(result);
 		scroll.setSize("100%", "100%");
 		
-		dummyCascade=new CascadeNet(null, ConvnetJs.createGrayImageNet(24, 24, 2));
+		dummyCascade=new CascadeNet(null, createNewNet());
 		
 		
 		final VerticalPanel root=PanelUtils.createScrolledVerticalPanel(dockRoot);
@@ -168,7 +175,9 @@ public class GWTConvNetJs implements EntryPoint {
 					public void run() {
 						//detectImage(anotherCanvas,8,2.4);//1.2 is default (1-16,1.2 - 3.6)
 						//detectImage(anotherCanvas,4,1.6);
+						getLastCascade().setMinRate(minRateBox.getValue());
 						detectImage(anotherCanvas,6,1.8);
+						
 						
 					}};
 				timer.schedule(100);
@@ -242,7 +251,7 @@ public class GWTConvNetJs implements EntryPoint {
 
 			@Override
 			public void executeOnClick() {
-				CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),ConvnetJs.createGrayImageNet(24, 24, classNumber),null);
+				CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),createNewNet(),null);
 				cascades.add(next);
 				
 				//train last one
@@ -258,7 +267,7 @@ public class GWTConvNetJs implements EntryPoint {
 
 			@Override
 			public void executeOnClick() {
-				CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),ConvnetJs.createGrayImageNet(24, 24, classNumber),null);
+				CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),createNewNet(),null);
 				cascades.add(next);
 				
 				trainPositiveOnly();
@@ -273,13 +282,24 @@ public class GWTConvNetJs implements EntryPoint {
 
 			@Override
 			public void executeOnClick() {
-				CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),ConvnetJs.createGrayImageNet(24, 24, classNumber),null);
+				//handle min-rate first
+				double minRate=minRateBox.getValue();
+				minrateValues.add(minRate);
+				
+				getLastCascade().setMinRate(minRate);
+				
+				minRateBox.setValue(0.5);
+				
+				
+				CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),createNewNet(),null);
 				cascades.add(next);
 				
 				passedVols.clear();
 				//trainPositiveOnly();
-				ignoreList.addAll(temporalyIgnoreList);
+				droppedList.addAll(temporalyIgnoreList);
 				temporalyIgnoreList.clear();
+				
+				
 			}
 			
 			
@@ -376,7 +396,29 @@ Button bt2=new Button("Do Test Last Cascade first 100 item(quick but not real vo
 			}
 		});
 		//root.add(bt2);
-		
+
+	List<Double> doubles=Lists.newArrayList();
+	for(double i=750;i>=250;i-=25){
+		doubles.add(i/1000);
+	}
+	minRateBox = new ValueListBox<Double>(new  Renderer<Double>() {
+
+		@Override
+		public String render(Double object) {
+			String v=object.toString();
+			return v.substring(0,Math.min(v.length(), 4));
+		}
+
+		@Override
+		public void render(Double object, Appendable appendable) throws IOException {
+			// TODO Auto-generated method stub
+			
+		}
+	});
+	minRateBox.setValue(0.5);
+	minRateBox.setAcceptableValues(doubles);
+	root.add(minRateBox);
+
 Button bt2b=new Button("Do Test Last Cascade first 100 item Passed parent filters Vol",new ClickHandler() {
 			
 			@Override
@@ -397,14 +439,14 @@ Button btSecond=new Button("Do Test2(all positive datas) at Last-Cascade",new Cl
 		});
 		//root.add(btSecond);
 		
-Button bt3=new Button("Do Test3(only if train root)",new ClickHandler() {
+Button bt3=new Button("Do Test All(can only train all)",new ClickHandler() {
 			
 			@Override
 			public void onClick(ClickEvent event) {
 				doTest3();
 			}
 		});
-		//root.add(bt3);
+		root.add(bt3);
 		
 		/*
 Button saveBt=new Button("Save",new ClickHandler() {//deprecated for first 
@@ -445,6 +487,8 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 
 			@Override
 			public void executeOnClick() {
+				getLastCascade().setMinRate(minRateBox.getValue());
+				
 				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
 				doTrain(v,true);
 				doTest3();
@@ -458,9 +502,12 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 
 			@Override
 			public void executeOnClick() {
+				getLastCascade().setMinRate(minRateBox.getValue());
+				
 				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
 				doTrain(v,false);
 				doTest3();
+				continueIndex++;
 			}
 			
 		};
@@ -506,7 +553,9 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 				for(CVImageeData data:positivesZip.getDatas()){
 					for(Rect rect:data.getRects()){
 					//	LogUtils.log("before:"+rect.toString());
-						rect.expand(-2, -2).copyTo(rect);//because LBP 1 neibors has problem
+						
+						//now stop convert lbp here
+						//rect.expand(-2, -2).copyTo(rect);//because LBP 1 neibors has problem
 						
 						//this already too much lost image info.
 						
@@ -528,7 +577,8 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 			}
 		});
 
-final String negativeImageName="bg2.zip";//"nose-inpainted-faces.zip"
+final String negativeImageName="bg2.zip";//bg2 is face up
+//final String negativeImageName="clipbg.zip";//"nose-inpainted-faces.zip"
 BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	
 	
@@ -607,10 +657,18 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		root.add(cifar10Upload);
 		*/
 		
-		Button test=new Button("Test rectangle-make time(no problem)",new ClickHandler() {
+		Button test=new Button("Test",new ClickHandler() {
 			
 			@Override
 			public void onClick(ClickEvent event) {
+				
+				for(int i=0;i<10;i++){
+					Vol v=createRandomVol().get();
+					Vol result=getLastCascadesNet().forward(v);
+					LogUtils.log(result.getW(0)+","+result.getW(1));
+					
+				}
+				/*
 				for(int i=0;i<negativesZip.size();i++){
 				CVImageeData pdata=negativesZip.getDatas().get(i);
 				
@@ -624,15 +682,27 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 				LogUtils.log(testImage.getWidth()+"x"+testImage.getHeight());
 				generateRect(testImage, 1, 1.2);
 				}
+				*/
 				
 			}
 		});
 		result.add(test);
 	}
 	
-	private Set<String> ignoreList=Sets.newHashSet();
+	private Set<String> droppedList=Sets.newHashSet();
 	private Set<String> temporalyIgnoreList=Sets.newHashSet();
 	
+	
+	Net createNewNet(){
+		//i guess it's better? createGrayImageNet2
+		return ConvnetJs.createDepathNet(1,1,2, 10, 2);
+		//return ConvnetJs.createGrayImageNet(24, 24, classNumber);
+	}
+	
+	
+	Rect zeroRect=new Rect(0,0,0,0);
+	List<Rect> continuRect=Lists.newArrayList(new Rect(1,0,-1,0),new Rect(0,1,0,-1),new Rect(0,0,-1,0),new Rect(0,0,0,-1),new Rect(1,0,-2,0),new Rect(0,1,0,-2));
+	int continueIndex;
 	protected void doTrain(int rate,boolean initial) {
 
 		
@@ -642,20 +712,29 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		int trained=0;
 		int negative=0;
 		
+		int ignored=0;
+		Rect offsetRect=null;
+		
 		if(initial){
-		Net net = ConvnetJs.createGrayImageNet(24, 24, classNumber);
+		continueIndex=0;	
+		Net net = createNewNet();
 		Trainer trainer = ConvnetJs.createTrainer(net,1);//batch no so effect on speed up
 		
 		getLastCascade().setNet(net);
 		getLastCascade().setTrainer(trainer);
+		offsetRect=zeroRect;
+		}else{
+			offsetRect=continuRect.get(continueIndex);
 		}
 		
+		Rect changedRect=new Rect();
 		for(CVImageeData pdata:positivesZip.getDatas()){
 			
 			Optional<ImageElement> imageElementOptional=positivesZip.getImageElement(pdata);
 			
 			if(!imageElementOptional.isPresent()){
-				LogUtils.log(pdata.getFileName()+" is not exist.skip");
+				ignored++;
+				//LogUtils.log(pdata.getFileName()+" is not exist.skip");
 				continue;
 			}
 			
@@ -663,11 +742,15 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			//generate canvas for image
 			
 			for(Rect rect:pdata.getRects()){
-				String path=pdata.getFileName()+"#"+rect.toString();
-				if(ignoreList.contains(path)){
-					LogUtils.log("ignore-train:"+path);
+				String path=pdata.getFileName()+"#"+rect.toKanmaString().replace(",", "-");
+				if(droppedList.contains(path)){
+					//LogUtils.log("ignore-train:"+path);
+					ignored++;
 					continue;//already dropped data skip
 				}
+				
+				//when continue rect a bit changed
+				changedRect.set(rect.getX()+offsetRect.getX(), rect.getY()+offsetRect.getY(), rect.getWidth()+offsetRect.getWidth(), rect.getHeight()+offsetRect.getHeight());
 				
 				
 				RectCanvasUtils.crop(baseImage, rect, sharedCanvas);
@@ -677,34 +760,47 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 				Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 				getLastCascade().getTrainer().train(vol, 0);
 				trained++;
-				trainedPositiveDatas.add(new PassedData(vol, path));
+				trainedPositiveDatas.add(new PassedData(vol, path));//re-use when test
 				
+				if(trained%100==0){//need progress
+					LogUtils.log("trained-positive:"+trained);
+				}
 			
 				int m=trained%rate;
 				if(m==0){
 				//	LogUtils.log(trained+","+rate);
 					Optional<Vol> optional=createRandomVol(getLastCascade());
 					if(!optional.isPresent()){
-						Window.alert("create random vol faild maybe image problems");
+						Window.alert("creating random vol faild maybe image problems");
 						return;
 					}
 					
 				Vol neg= optional.get();
 				getLastCascade().getTrainer().train(neg, 1);
 				negative++;
+				
+					
 				}
 				
 				
 			}
 		}
-		LogUtils.log("trained-positive:"+trained+ "negative="+negative+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
+		LogUtils.log("trained-positive:"+trained+ " negative="+negative+" ignored="+ignored+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
 	}
 
 	protected void fromJson(String text) {
 		cascades.clear();
 		
 		JSONValue value=JSONParser.parseStrict(text);
-		JSONArray array=value.isArray();
+		
+		
+		
+		JSONObject object=value.isObject();
+		
+		//parse nets
+		JSONValue netsValue=object.get("nets");
+		
+		JSONArray array=netsValue.isArray();
 		if(array==null){
 			Window.alert("seems invalid cascade-json type");
 			return;
@@ -719,16 +815,92 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			}
 			cascades.add(new CascadeNet(parent, jsonText));
 		}
+		LogUtils.log("nets:"+cascades.size()+" cascades");
+		//parse minrates
+		minrateValues.clear();
+		JSONValue minratesJSValue=object.get("minrates");
+		
+		JSONArray minratesArray=minratesJSValue.isArray();
+		if(minratesArray==null){
+			Window.alert("seems invalid cascade-json type");
+			return;
+		}
+		for(int i=0;i<minratesArray.size();i++){
+			JSONValue arrayValue=minratesArray.get(i);
+			JSONNumber number=arrayValue.isNumber();
+			if(i!=minratesArray.size()-1){
+				minrateValues.add(number.doubleValue());
+			}else{
+				minRateBox.setValue(number.doubleValue());
+			}
+		}
+		
+		LogUtils.log("minrates:");
+		for(double minrate:minrateValues){
+			LogUtils.log(minrate);
+		}
+		LogUtils.log("current:"+minRateBox.getValue());
+		
+		//parse dropped
+		droppedList.clear();
+				JSONValue droppedValue=object.get("dropped");
+				
+				JSONArray droppedArray=droppedValue.isArray();
+				if(droppedArray==null){
+					Window.alert("seems invalid cascade-json type");
+					return;
+				}
+				for(int i=0;i<droppedArray.size();i++){
+					JSONValue arrayValue=droppedArray.get(i);
+					JSONString string=arrayValue.isString();
+					String jsonText=string.stringValue();
+					
+					droppedList.add(jsonText);
+				}
+		
+				LogUtils.log("dropped:");
+				for(String dropped:droppedList){
+					LogUtils.log(dropped);
+				}	
+				
+				
+		passedVols.clear();
+		temporalyIgnoreList.clear();
+		trainedPositiveDatas.clear();		
+				
 	}
 
+	List<Double> minrateValues=Lists.newArrayList();
+	
 	protected String toJson() {
+		Joiner joiner=Joiner.on(",");
+		List<String> objects=Lists.newArrayList();
+		
 		List<String> jsons=Lists.newArrayList();
 		for(CascadeNet cascade:cascades){
 			jsons.add(cascade.getNet().toJsonString());
 		}
 		
-		String json="["+Joiner.on(",").join(jsons)+"]";
-		return json;
+		String nets="\"nets\":["+Joiner.on(",").join(jsons)+"]";
+		objects.add(nets);
+		
+		//dropped files
+		
+		List<String> files=Lists.newArrayList();
+		for(String file:droppedList){
+			files.add("\""+file+"\"");
+		}
+		objects.add("\"dropped\":["+joiner.join(files)+"]");
+		
+		List<Double> fvalues=Lists.newArrayList(minrateValues);
+		fvalues.add(minRateBox.getValue());
+		
+		objects.add("\"minrates\":["+joiner.join(fvalues)+"]");
+		
+		//
+		
+		
+		return "{"+joiner.join(objects)+"}";
 	}
 
 	
@@ -737,7 +909,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		Stopwatch watch=Stopwatch.createStarted();
 		int trained=0;
 		
-		Net net = ConvnetJs.createGrayImageNet(24, 24, classNumber);
+		Net net = createNewNet();
 		Trainer trainer = ConvnetJs.createTrainer(net,1);//batch no so effect on speed up
 		
 		getLastCascade().setNet(net);
@@ -794,6 +966,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	
 	int count=0;
 	List<ConfidenceRect> mutchRect=Lists.newArrayList();
+	ByteImageDataIntConverter byteDataIntConverter=new ByteImageDataIntConverter(Canvas.createIfSupported().getContext2d(),true);
 	/**
 	 * 
 	 * @param canvas
@@ -804,6 +977,8 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	 * 
 	 * 4,1.6(so so) try:1404,mutch:38,12s 
 	 */
+	
+	
 	protected void detectImage(Canvas canvas,int stepScale,double scale_factor) {
 		Stopwatch watch=Stopwatch.createStarted();
 		if(cascades.size()<1){
@@ -821,13 +996,13 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		
 		
 		//make method to use same Convert way
-		ByteImageDataIntConverter converter=new ByteImageDataIntConverter(grayscaleCanvasForDetector.getContext2d(),true);
+		
 		//PROPOSE ImageDataUtils.createFrom(Canvas);
-		int[][] bytes=converter.convert(canvas.getContext2d().getImageData(0, 0, canvas.getCoordinateSpaceWidth(), canvas.getCoordinateSpaceHeight()));
+		//int[][] bytes=byteDataIntConverter.convert(canvas.getContext2d().getImageData(0, 0, canvas.getCoordinateSpaceWidth(), canvas.getCoordinateSpaceHeight()));
 		
-		ImageData imageData=converter.reverse().convert(lbpConverter.convert(bytes));
-		CanvasUtils.createCanvas(grayscaleCanvasForDetector, imageData);
-		
+		//ImageData imageData=byteDataIntConverter.reverse().convert(lbpConverter.convert(bytes));
+		//CanvasUtils.createCanvas(grayscaleCanvasForDetector, imageData);
+		CanvasUtils.convertToGrayScale(canvas, grayscaleCanvasForDetector);
 		
 		
 		//grayscaleCanvas=CanvasUtils.copyTo(canvas, grayscaleCanvas, true);//test image is LBP just copy here
@@ -953,7 +1128,11 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
         		
 				CanvasUtils.clear(resizedCanvas);//for transparent image
 				resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
-				Vol vol=ConvnetJs.createGrayVolFromGrayScaleImage(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+				
+				//this must extreamly slow
+				Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+				
+				//Vol vol=ConvnetJs.createGrayVolFromGrayScaleImage(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 				
 				
 				for(Vol passAll:cascades.get(lastCascadeIndex).filter(vol).asSet()){
@@ -1062,7 +1241,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			
 			cascadeNet.getTrainer().train(vol, 0);
 			trained++;
-			trainedPositiveDatas.add(new PassedData(vol, pdata.getFileName()+"#"+rect.toString()));
+			trainedPositiveDatas.add(new PassedData(vol, pdata.getFileName()+"#"+rect.toKanmaString().replace(",", "-")));
 			//LogUtils.log("trained-positive:"+trained);
 			
 			Optional<Vol> neg= createRandomVol(cascadeNet);//finding data is really take time
@@ -1296,7 +1475,8 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			Vol vol=trainedData.getVol();
 			Vol vol2=getLastCascadesNet().forward(vol,true);
 			
-			if(vol2.getW(0)>vol2.getW(1)){
+			if(vol2.getW(0)>minRateBox.getValue()){
+			//if(vol2.getW(0)>vol2.getW(1)){
 				successMatch++;
 				//successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
 			}else{
@@ -1447,6 +1627,8 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			
 		}
 		
+		
+		
 		for(int i=0;i<testNumber;i++){
 			Optional<Vol> optional=createRandomVol();
 			if(!optional.isPresent()){
@@ -1524,6 +1706,7 @@ public void doTestCascadeReal(CascadeNet cascade){
 		int testNumber=100;
 		
 		
+		double minPositiveRate=minRateBox.getValue();
 		
 		for(int i=0;i<testNumber;i++){
 			CVImageeData pdata=positivesZip.get(i);
@@ -1548,7 +1731,8 @@ public void doTestCascadeReal(CascadeNet cascade){
 			if(i==0){
 			//	LogUtils.log("v:"+vol2.getW(0)+","+vol2.getW(1));
 			}
-			if(vol2.getW(0)>vol2.getW(1)){
+			if(vol2.getW(0)>minPositiveRate){
+			//if(vol2.getW(0)>vol2.getW(1)){
 				successMatch++;
 				successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
 			}else{
@@ -1586,7 +1770,8 @@ public void doTestCascadeReal(CascadeNet cascade){
 			//LogUtils.log(vol);
 			//LogUtils.log(value);
 			}
-			if(value.getW(1)>value.getW(0)){
+			if(value.getW(1)>(1.0-minPositiveRate)){
+			//if(value.getW(1)>value.getW(0)){
 				successNegativesPanel.add(new Image(imageDataUrl));
 				successMiss++;
 			}else{
@@ -1684,8 +1869,12 @@ public void doTestCascadeReal(CascadeNet cascade){
 		LogUtils.log("finish test:"+ stopWatch.elapsed(TimeUnit.SECONDS)+"s");
 	}
 	
+	private int netWidth=24;
+	private int netheight=24;
 	
-	private Canvas resizedCanvas=CanvasUtils.createCanvas(24, 24);//fixed size
+	//expand net because of edge.
+	private Canvas resizedCanvas=CanvasUtils.createCanvas(netWidth+2, netheight+2);//fixed size //can i change?
+	
 	private HorizontalPanel successPosPanel;
 	private ExecuteButton analyzeBt;
 	private FileUploadForm netUploadBt;
@@ -1750,11 +1939,90 @@ public void doTestCascadeReal(CascadeNet cascade){
 	}
 	
 	boolean isAllImageGrayscale=true;
+
+	private ValueListBox<Double> minRateBox;
 	private Vol createVolFromImageData(ImageData imageData){
+		if(imageData.getWidth()!=26 || imageData.getHeight()!=26){ //somehow still 26x26 don't care!
+			Window.alert("invalid size:"+imageData.getWidth()+","+imageData.getHeight());
+			return null;
+		}
 		if(isAllImageGrayscale){
-			return ConvnetJs.createGrayVolFromGrayScaleImage(imageData);
+			
+			//LBP here,now no effect on but edge problem possible happen
+			int[][] ints=byteDataIntConverter.convert(imageData); //convert color image to grayscale data
+			//int[][] data=lbpConverter.convert(ints);
+			
+			int[] histogram=lbpConverter.count(ints);
+			
+			int min=ints.length*ints[0].length;
+			for(int v:histogram){
+				if(v!=0 && v<min){
+					min=v;
+				}
+			}
+			
+			//max 576
+			
+			int[] normalized=new int[8];
+			for(int i=0;i<8;i++){
+				if(histogram[i]>0){
+					normalized[i]=Math.min(16,(int)(histogram[i]/36));//0-16
+				}
+			}
+			
+			//try normalize
+			
+			
+			//lbp has edge problem
+			/*
+			int[][] cropped=new int[24][24];
+			for(int x=0;x<24;x++){
+				for(int y=0;y<24;y++){
+					cropped[x][y]=data[x+1][y+1];
+				}
+			}
+			*/
+			
+			/*
+			for(int x=0;x<26;x++){
+				for(int y=0;y<26;y++){
+					for(int i=1;i<=8;){
+						if((1<<i & data[x][y])>0){
+							histogram[i-1]++;
+						}
+					}
+				}
+			}
+			*/
+			Vol vol=ConvnetJs.createVol(1, 1, 2, 0);
+			//Vol vol=ConvnetJs.createVol(1, 1, histogram.length, 0);
+			int r=getRandom(0, 100);
+			String debug="";
+			
+			//convert 2-dimension values
+			int v1=normalized[0] | (normalized[1]<<4) | (normalized[2]<<8) | (normalized[3]<<12);
+			int v2=normalized[4] | (normalized[5]<<4) | (normalized[6]<<8) | (normalized[7]<<12);
+			vol.set(0, 0, 1, v1);
+			vol.set(0, 0, 2, v2);
+			/*
+			for(int i=0;i<histogram.length;i++){//now changed 8x1x1
+				vol.set(i, 1, 8, normalized[i]);
+				if(r==50){
+					debug+=normalized[i]+",";
+				}
+			}
+			*/
+			
+			if(r==50){
+				LogUtils.log(v1+"-"+v2);
+			}
+			
+			return vol;
+			
+			//return ConvnetJs.createGrayVolFromGrayScaleImage(byteDataIntConverter.reverse().convert(cropped));
 		}else{
-			return ConvnetJs.createGrayVolFromRGBImage(imageData);
+			throw new RuntimeException("not support. now use 1x1x8 network");
+			//return ConvnetJs.createGrayVolFromRGBImage(imageData);
 		}
 	}
 	

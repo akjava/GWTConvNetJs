@@ -13,6 +13,15 @@ import com.google.common.collect.Lists;
 public class CascadeNet {
 private CascadeNet parent;
 private Trainer trainer;
+private double minRate=0.5;
+public double getMinRate() {
+	return minRate;
+}
+
+public void setMinRate(double minRate) {
+	this.minRate = minRate;
+}
+
 public Trainer getTrainer() {
 	return trainer;
 }
@@ -117,7 +126,7 @@ public void train(Vol vol,int classIndex){
 public class VolFilter implements Predicate<Vol>{
 CascadeNet cnet;
 int index;
-double minConfidence=0.55;
+
 public VolFilter(CascadeNet cnet,int index){
 	this.cnet=cnet;
 	this.index=index;
@@ -125,7 +134,8 @@ public VolFilter(CascadeNet cnet,int index){
 	@Override
 	public boolean apply(Vol input) {
 		Vol result=cnet.getNet().forward(input);
-		return result.getW(0)>result.getW(1) && result.getW(0)>minConfidence;
+		return result.getW(0)>cnet.getMinRate();
+		//return result.getW(0)>result.getW(1);
 	}
 	
 }
