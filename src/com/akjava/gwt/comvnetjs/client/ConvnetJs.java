@@ -70,7 +70,8 @@ public class ConvnetJs {
 	var layer_defs = [];
 	layer_defs.push({type:'input', out_sx:x, out_sy:y, out_depth:depth});
 	layer_defs.push({type:'fc',num_neurons:neurons});//here is raw
-	layer_defs.push({type:'fc', num_neurons:classes,activation: 'tanh'});
+	//layer_defs.push({type:'fc', num_neurons:classes,activation: 'sigmoid'});
+	layer_defs.push({type:'fc', num_neurons:classes,activation: 'relu'});
 	layer_defs.push({type:'softmax', num_classes:classes});
 	
 	var net = new $wnd.convnetjs.Net();
@@ -97,6 +98,17 @@ public class ConvnetJs {
 	
 	
 
+	//NOT TEST YET
+	public static  final native Vol createDepthOnlyVol(double[] values) /*-{
+	var vol= new $wnd.convnetjs.Vol(1,1,values.length,0);
+	
+	for(var i=0;i<values.legth;i++){
+		vol.set(0,0,i,values[i]);
+		}
+		
+	return vol;
+	 }-*/;
+	
 	
 	public static  final native Vol createVol(int w,int h,int depth,double defaultValue) /*-{
 	return new $wnd.convnetjs.Vol(w,h,depth,defaultValue);

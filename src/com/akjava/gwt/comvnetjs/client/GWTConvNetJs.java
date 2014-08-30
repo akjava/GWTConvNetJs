@@ -32,7 +32,6 @@ import com.akjava.gwt.lib.client.experimental.opencv.CVImageeData;
 import com.akjava.gwt.lib.client.widget.PanelUtils;
 import com.akjava.lib.common.graphics.Rect;
 import com.akjava.lib.common.io.FileType;
-import com.akjava.lib.common.utils.ColorUtils;
 import com.akjava.lib.common.utils.FileNames;
 import com.akjava.lib.common.utils.ListUtils;
 import com.google.common.base.Joiner;
@@ -41,7 +40,6 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.google.common.primitives.Doubles;
-import com.google.common.primitives.Ints;
 import com.google.gwt.canvas.client.Canvas;
 import com.google.gwt.canvas.dom.client.ImageData;
 import com.google.gwt.core.client.EntryPoint;
@@ -444,7 +442,7 @@ Button bt3=new Button("Do Test All(can only train all)",new ClickHandler() {
 			
 			@Override
 			public void onClick(ClickEvent event) {
-				doTest3();
+				doTestLastPositiveTrainedAll();
 			}
 		});
 		root.add(bt3);
@@ -486,6 +484,76 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 		
 		HorizontalPanel repeatBts=new HorizontalPanel();
 		root.add(repeatBts);
+		
+		Button cancel=new Button("Cancel",new ClickHandler() {
+			
+			@Override
+			public void onClick(ClickEvent event) {
+				autoRepeatCancel=true;
+				
+			}
+		});
+		repeatBts.add(cancel);
+		
+		ExecuteButton autoRepeatBt=new ExecuteButton("Repeat Last Learning(Auto)",false){
+
+			@Override
+			public void executeOnClick() {
+				getLastCascade().setMinRate(minRateBox.getValue());
+				autoRepeatCancel=false;
+				
+				final double targetRate=0.98;
+				final int maxIteration=10000;
+				Timer timer=new Timer(){
+					int iteration=0;
+					boolean doing;
+					@Override
+					public void run() {
+						if(doing){
+							return;
+						}
+						
+						if(autoRepeatCancel){
+							LogUtils.log("cancelled by user");
+							cancel();
+							doing=false;
+							setEnabled(true);
+							return;
+						}
+						
+						doing=true;
+						doRepeat(false);
+						doTestLastPositiveTrainedAll();
+						
+						if(lastTestMutchRate>targetRate){
+							LogUtils.log("reach target-muth-rate.stopped "+lastTestMutchRate+", target="+targetRate);
+							cancel();
+							doing=false;
+							setEnabled(true);
+							return;
+						}
+						
+						iteration++;
+						if(iteration==maxIteration){
+							LogUtils.log("max iteration reached "+maxIteration+".canceled");
+							cancel();
+							doing=false;
+							setEnabled(true);
+							return;
+							
+						}
+						
+						doing=false;
+					}};
+				
+				timer.scheduleRepeating(200);
+			}
+			
+		};
+			
+		repeatBts.add(autoRepeatBt);
+		
+		
 		ExecuteButton repeatBt=new ExecuteButton("Repeat Last Learning(continue)"){
 
 			@Override
@@ -494,7 +562,7 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 				
 				//re-train last trained for improve
 				doRepeat(false);
-				doTest3();
+				doTestLastPositiveTrainedAll();
 			}
 			
 		};
@@ -509,7 +577,7 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 				
 				//re-train last trained for improve
 				doRepeat(true);
-				doTest3();
+				doTestLastPositiveTrainedAll();
 			}
 			
 		};
@@ -525,7 +593,7 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 				
 				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
 				doTrain(v,true);
-				doTest3();
+				doTestLastPositiveTrainedAll();
 			}
 			
 		};
@@ -543,13 +611,33 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 				for(int i=0;i<6;i++){
 				doTrain(v,false);
 				}
-				doTest3();
+				doTestLastPositiveTrainedAll();
 				offsetRectContinueIndex++;
 			}
 			
 		};
 			
 		root.add(trainPositiveRoot3);
+		
+		
+		ExecuteButton trainPositiveRoot4=new ExecuteButton("Train Positive & Negative Last cascade x 12 differenct"){
+
+			@Override
+			public void executeOnClick() {
+				getLastCascade().setMinRate(minRateBox.getValue());
+				
+				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
+				doTrain(v,true);//offsetRectContinueIndex initialized here
+				for(int i=0;i<12;i++){//maybe 12 is max
+				doTrain(v,false);
+				}
+				doTestLastPositiveTrainedAll();
+				offsetRectContinueIndex++;
+			}
+			
+		};
+			
+		root.add(trainPositiveRoot4);
 		
 		
 		ExecuteButton trainPositiveRoot2=new ExecuteButton("Train Positive & Negative Last cascade continue(make differenct positives"){
@@ -560,7 +648,7 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 				
 				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
 				doTrain(v,false);
-				doTest3();
+				doTestLastPositiveTrainedAll();
 				offsetRectContinueIndex++;
 			}
 			
@@ -684,7 +772,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			@Override
 			public void executeOnClick() {
 				retrainFaildPositives();
-				doTest3();
+				doTestLastPositiveTrainedAll();
 			}
 		};
 		fpPanel.add(retrainFaildPos);
@@ -1623,6 +1711,7 @@ protected void doRepeat(boolean initial) {
 		
 		
 	}
+	boolean autoRepeatCancel;
 	
 	private void startTraining(int trained){
 		LogUtils.log("start-training");
@@ -1693,7 +1782,8 @@ protected void doRepeat(boolean initial) {
 		
 	}
 	
-	public void doTest3(){//train 1200 = 24s
+	double lastTestMutchRate;
+	public void doTestLastPositiveTrainedAll(){//train 1200 = 24s
 		temporalyIgnoreList.clear();
 		
 		successPosPanel.clear();
@@ -1730,12 +1820,12 @@ protected void doRepeat(boolean initial) {
 			
 		}
 		
+		lastTestMutchRate=(double)successMatch/(successMatch+faildMatch);
 		
 		
-		LogUtils.log("mutchresult:"+successMatch+","+faildMatch);
-		LogUtils.log("missresult:"+successMiss+","+missMatch);
+		//LogUtils.log("missresult:"+successMiss+","+missMatch);
 		
-		LogUtils.log("finish test3:"+ stopWatch.elapsed(TimeUnit.SECONDS)+"s");
+		LogUtils.log("finish Test all trained-positive datas:"+ stopWatch.elapsed(TimeUnit.SECONDS)+"s" + " successMatch="+successMatch+",faildMatch="+faildMatch);
 	}
 	
 	public CascadeNet getLastCascade(){
