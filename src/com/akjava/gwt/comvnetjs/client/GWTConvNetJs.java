@@ -532,6 +532,26 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 			
 		root.add(trainPositiveRoot);
 		
+		ExecuteButton trainPositiveRoot3=new ExecuteButton("Train Positive & Negative Last cascade x 6 differenct"){
+
+			@Override
+			public void executeOnClick() {
+				getLastCascade().setMinRate(minRateBox.getValue());
+				
+				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
+				doTrain(v,true);//offsetRectContinueIndex initialized here
+				for(int i=0;i<6;i++){
+				doTrain(v,false);
+				}
+				doTest3();
+				offsetRectContinueIndex++;
+			}
+			
+		};
+			
+		root.add(trainPositiveRoot3);
+		
+		
 		ExecuteButton trainPositiveRoot2=new ExecuteButton("Train Positive & Negative Last cascade continue(make differenct positives"){
 
 			@Override
@@ -860,12 +880,12 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	private Set<String> temporalyIgnoreList=Sets.newHashSet();
 	
 	
-	int lbpDataSplit=4;//somewhere bug?
+	int lbpDataSplit=2;//somewhere bug?
 	
 	Net createNewNet(){
 		
-		//return ConvnetJs.createRawDepathNet2(1,1,8*lbpDataSplit*lbpDataSplit, 8*lbpDataSplit*lbpDataSplit*10, 2);
-		return ConvnetJs.createDepathNet(1,1,8*lbpDataSplit*lbpDataSplit, 8*lbpDataSplit*lbpDataSplit*10, 2);
+		return ConvnetJs.createRawDepathNet2(1,1,8*lbpDataSplit*lbpDataSplit, 8*lbpDataSplit*lbpDataSplit*10, 2);
+		//return ConvnetJs.createDepathNet(1,1,8*lbpDataSplit*lbpDataSplit, 8*lbpDataSplit*lbpDataSplit*10, 2);
 		
 		//return ConvnetJs.createGrayImageNet2(24, 24, classNumber);
 	}
@@ -926,6 +946,7 @@ protected void doRepeat(boolean initial) {
 	}
 	protected void doTrain(int rate,boolean initial) {
 
+		if(initial)
 		lastLeaningList.clear();
 		
 		trainedPositiveDatas.clear();
@@ -2200,16 +2221,17 @@ public void doTestCascadeReal(CascadeNet cascade){
 		int[] retInt=BinaryPattern.dataToBinaryPattern(data,lbpDataSplit,edgeSize,edgeSize);
 		//set vol
 		for(int i=0;i<retInt.length;i++){
-			//double v=(double)retInt[i]/72-1;//maybe -1 - 1 //split must be 2
-			double v=(double)retInt[i]/18-1;//maybe -1 - 1 //split must be 2
+			double v=(double)retInt[i]/72-1;//maybe range(-1 - 1) //split must be 2 for 12x12(144) block
+			//double v=(double)retInt[i]/18-1;//maybe -1 - 1 //split must be 4 for 6x6(36) block
+			
 			if(v>1 || v<-1){
 				LogUtils.log("invalid");
 			}
-			//vol.set(0, 0,i,v);
+			vol.set(0, 0,i,v);
 			
-			vol.set(0, 0,i,retInt[i]);
+			//vol.set(0, 0,i,retInt[i]);
 			
-			//vol.set(0, 0,i,(double)retInt[i]/144);//try 0-1 normalize
+			//
 			//vol.set(0, 0,i,retInt[i]);//no normalize
 		}
 		
