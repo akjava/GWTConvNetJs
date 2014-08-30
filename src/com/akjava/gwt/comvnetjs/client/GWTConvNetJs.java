@@ -41,6 +41,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.google.common.primitives.Doubles;
+import com.google.common.primitives.Ints;
 import com.google.gwt.canvas.client.Canvas;
 import com.google.gwt.canvas.dom.client.ImageData;
 import com.google.gwt.core.client.EntryPoint;
@@ -483,6 +484,39 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 		list.setSelectedIndex(1);
 		root.add(list);
 		
+		HorizontalPanel repeatBts=new HorizontalPanel();
+		root.add(repeatBts);
+		ExecuteButton repeatBt=new ExecuteButton("Repeat Last Learning(continue)"){
+
+			@Override
+			public void executeOnClick() {
+				getLastCascade().setMinRate(minRateBox.getValue());
+				
+				//re-train last trained for improve
+				doRepeat(false);
+				doTest3();
+			}
+			
+		};
+			
+		repeatBts.add(repeatBt);
+		
+		ExecuteButton repeatBt2=new ExecuteButton("Repeat Last Learning(Initial)"){
+
+			@Override
+			public void executeOnClick() {
+				getLastCascade().setMinRate(minRateBox.getValue());
+				
+				//re-train last trained for improve
+				doRepeat(true);
+				doTest3();
+			}
+			
+		};
+			
+		repeatBts.add(repeatBt2);
+		
+		
 		ExecuteButton trainPositiveRoot=new ExecuteButton("Train Positive & Negative Last cascade from initial"){
 
 			@Override
@@ -498,7 +532,7 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 			
 		root.add(trainPositiveRoot);
 		
-		ExecuteButton trainPositiveRoot2=new ExecuteButton("Train Positive & Negative Last cascade continue"){
+		ExecuteButton trainPositiveRoot2=new ExecuteButton("Train Positive & Negative Last cascade continue(make differenct positives"){
 
 			@Override
 			public void executeOnClick() {
@@ -507,7 +541,7 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
 				doTrain(v,false);
 				doTest3();
-				continueIndex++;
+				offsetRectContinueIndex++;
 			}
 			
 		};
@@ -687,26 +721,212 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			}
 		});
 		result.add(test);
+		
+		Button test2=new Button("Test2",new ClickHandler() {
+			Net testNet=ConvnetJs.createRawDepathNet(1, 1, 2, 4, 2);
+			
+			Trainer testTrainer=ConvnetJs.createTrainer(testNet, 1);
+			int trained=0;
+			List<Vol> pos=Lists.newArrayList();
+			List<Vol> neg=Lists.newArrayList();
+			@Override
+			public void onClick(ClickEvent event) {
+				int max=100;
+				if(pos.isEmpty()){
+				
+				for(int i=0;i<max;i++){
+					int x=getRandom(0, 10);
+					int y=getRandom(0, 10);
+					
+					Vol v=ConvnetJs.createVol(1, 1, 2, 0);
+					v.set(0, 0, new int[]{x,y});
+					
+					//Stats s=testTrainer.train(v, 0);
+					//LogUtils.log(s);
+					pos.add(v);
+				}
+				}else{
+					for(Vol v:pos){
+						testTrainer.train(v, 0);
+					}
+				}
+				if(neg.isEmpty()){
+				for(int i=0;i<max;i++){
+					int x=getRandom(100, 200);
+					int y=getRandom(100, 200);
+					
+					Vol v=ConvnetJs.createVol(1, 1, 2, 0);
+					v.set(0, 0, new int[]{x,y});
+					
+					Stats s=testTrainer.train(v, 1);
+					//LogUtils.log(s);
+					neg.add(v);
+				}
+				}else{
+					for(Vol v:neg){
+						testTrainer.train(v, 1);
+					}
+				}
+				
+				trained+=max*2;
+				
+				int fine=0;
+				for(int i=0;i<10;i++){
+					for(int j=0;j<10;j++){
+					int x=getRandom(0, 10);
+					int y=getRandom(0, 10);
+					
+					
+					Vol randomVol=ConvnetJs.createVol(1, 1, 2, 0);
+					
+					randomVol.set(0, 0, new double[]{i,j});
+					//LogUtils.log(randomVol);
+					
+					//Vol randomVol=testb(new double[]{x,y});
+					
+					//LogUtils.log(randomVol.get(0,0,0)+","+randomVol.get(0,0,1));
+					Vol r=testNet.forward(randomVol);
+					//LogUtils.log(randomVol);
+					//LogUtils.log(randomVol);
+					String status="";
+					if(r.getW(0)>r.getW(1)){
+						status="fine";
+						fine++;
+					}else{
+						status="ng";
+					}
+					//LogUtils.log(status+","+i+":"+r.getW(0)+","+r.getW(1));
+				}
+				}
+				LogUtils.log("fine:"+fine+",trained="+trained);
+				//LogUtils.log(testb(new double[]{0.1,0.2}));
+				
+				/*
+				Net net=ConvnetJs.createDepathNet(1, 1, 3, 300, 2);
+				
+				Trainer trainer=ConvnetJs.createTrainer(net, 1);
+				
+				int max=100;
+				for(int i=0;i<max;i++){
+					int x=getRandom(0, 10);
+					int y=getRandom(0, 10);
+					int z=getRandom(0, 10);
+					Vol v=ConvnetJs.createVol(1, 1, 3, 0);
+					v.set(1, 1, new int[]{x,y,z});
+					
+					Stats s=trainer.train(v, 0);
+					LogUtils.log(s);
+				}
+				
+				for(int i=0;i<max;i++){
+					int x=getRandom(100, 200);
+					int y=getRandom(100, 200);
+					int z=getRandom(100, 200);
+					Vol v=ConvnetJs.createVol(1, 1, 3, 0);
+					v.set(1, 1, new int[]{x,y,z});
+					
+					Stats s=trainer.train(v, 1);
+					LogUtils.log(s);
+				}
+				
+				
+				
+				for(int i=0;i<10;i++){
+					int x=getRandom(0, 10);
+					int y=getRandom(0, 10);
+					int z=getRandom(0, 10);
+					Vol v=ConvnetJs.createVol(1, 1, 3, 0);
+					v.set(1, 1, new int[]{x,y,z});
+					Vol r=net.forward(v);
+					LogUtils.log(i+":"+r.getW(0)+","+r.getW(1));
+				}
+				*/
+			}
+		});
+		result.add(test2);
 	}
+	
+	public  static  final native Vol testb(double[] values) /*-{
+	var vol=new $wnd.convnetjs.Vol(1,1,values.length,0);
+	
+	for(var i=0;i<values.length;i++){
+		vol.set(0,0,i,values[i]);
+	}
+	
+	return vol;
+	 }-*/;
 	
 	private Set<String> droppedList=Sets.newHashSet();
 	private Set<String> temporalyIgnoreList=Sets.newHashSet();
 	
 	
+	int lbpDataSplit=4;//somewhere bug?
+	
 	Net createNewNet(){
 		
-		//return ConvnetJs.createDepathNet(1,1,2, 10, 2);//i tried int[] to softmax,but faild
+		//return ConvnetJs.createRawDepathNet2(1,1,8*lbpDataSplit*lbpDataSplit, 8*lbpDataSplit*lbpDataSplit*10, 2);
+		return ConvnetJs.createDepathNet(1,1,8*lbpDataSplit*lbpDataSplit, 8*lbpDataSplit*lbpDataSplit*10, 2);
 		
-		return ConvnetJs.createGrayImageNet2(24, 24, classNumber);
+		//return ConvnetJs.createGrayImageNet2(24, 24, classNumber);
 	}
 	
 	
+	//for studyin conitue change similar image to different
 	Rect zeroRect=new Rect(0,0,0,0);
-	List<Rect> continuRect=Lists.newArrayList(new Rect(1,0,-1,0),new Rect(0,1,0,-1),new Rect(0,0,-1,0),new Rect(0,0,0,-1),new Rect(1,0,-2,0),new Rect(0,1,0,-2));
-	int continueIndex;
+	List<Rect> continuRect=Lists.newArrayList(
+			new Rect(1,0,-1,0),new Rect(0,1,0,-1),new Rect(0,0,-1,0),new Rect(0,0,0,-1),new Rect(1,0,-2,0),new Rect(0,1,0,-2),
+			new Rect(2,0,-2,0),new Rect(0,2,0,-2),new Rect(0,0,-2,0),new Rect(0,0,0,-2),new Rect(2,0,-4,0),new Rect(0,2,0,-4)
+			);
+	int offsetRectContinueIndex;
+	
+	List<PassedData> lastLeaningList=Lists.newArrayList();
+protected void doRepeat(boolean initial) {
+	//learning same value is not bad idea.
+		int trained=0;
+		
+		if(initial){
+			
+			offsetRectContinueIndex=0;	
+			Net net = createNewNet();
+			Trainer trainer = ConvnetJs.createTrainer(net,1);//batch no so effect on speed up
+			
+			getLastCascade().setNet(net);
+			getLastCascade().setTrainer(trainer);
+			
+			}
+		
+		Stopwatch watch=Stopwatch.createStarted();
+		for(PassedData passedData:lastLeaningList){
+			Vol origin=passedData.getVol();
+			/*
+			Vol copy=createNewVol();
+			
+			//int r=getRandom(0,origin.getLength());
+			//copy values.
+			for(int i=0;i<origin.getLength();i++){
+				double v=origin.getW(i);
+				/*
+				if(r==i){
+					if(v<144){//trying difference value,but seems not working
+						v+=1;
+					}
+				}
+				*/
+				//copy.setW(i, v);
+			//}
+		
+			//LogUtils.log("set-vallue:"+Joiner.on(",").join(copy.getWAsList()));
+			//getLastCascadesTrainer().train(copy, passedData.isNegative()?1:0);
+			getLastCascadesTrainer().train(origin, passedData.isNegative()?1:0);
+			trained++;
+		}
+		
+
+		LogUtils.log("trained-both:"+trained+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
+	}
 	protected void doTrain(int rate,boolean initial) {
 
-		
+		lastLeaningList.clear();
 		
 		trainedPositiveDatas.clear();
 		Stopwatch watch=Stopwatch.createStarted();
@@ -717,7 +937,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		Rect offsetRect=null;
 		
 		if(initial){
-		continueIndex=0;	
+		offsetRectContinueIndex=0;	
 		Net net = createNewNet();
 		Trainer trainer = ConvnetJs.createTrainer(net,1);//batch no so effect on speed up
 		
@@ -725,7 +945,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		getLastCascade().setTrainer(trainer);
 		offsetRect=zeroRect;
 		}else{
-			offsetRect=continuRect.get(continueIndex);
+			offsetRect=continuRect.get(offsetRectContinueIndex);
 		}
 		
 		Rect changedRect=new Rect();
@@ -762,7 +982,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 				getLastCascade().getTrainer().train(vol, 0);
 				trained++;
 				trainedPositiveDatas.add(new PassedData(vol, path));//re-use when test
-				
+				lastLeaningList.add(new PassedData(vol, path));
 				if(trained%100==0){//need progress
 					LogUtils.log("trained-positive:"+trained);
 				}
@@ -778,6 +998,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 					
 				Vol neg= optional.get();
 				getLastCascade().getTrainer().train(neg, 1);
+				lastLeaningList.add(new PassedData(neg, true));
 				negative++;
 				
 					
@@ -1669,6 +1890,13 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	public class PassedData{
 		private Vol vol;
 		private String dataUrl;
+		private boolean negative;
+		public boolean isNegative() {
+			return negative;
+		}
+		public void setNegative(boolean negative) {
+			this.negative = negative;
+		}
 		public Vol getVol() {
 			return vol;
 		}
@@ -1684,6 +1912,10 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		public PassedData(Vol vol,String dataUrl){
 			this.vol=vol;
 			this.dataUrl=dataUrl;
+		}
+		public PassedData(Vol vol,boolean negative){
+			this.vol=vol;
+			this.negative=negative;
 		}
 	}
 public void doTestCascadeReal(CascadeNet cascade){
@@ -1871,11 +2103,11 @@ public void doTestCascadeReal(CascadeNet cascade){
 	}
 	
 	private int netWidth=24;
-	private int netheight=24;
+	private int netHeight=24;
 	
 	//expand net because of edge.
 	private int edgeSize=4;//must be can divided 2
-	private Canvas resizedCanvas=CanvasUtils.createCanvas(netWidth+edgeSize, netheight+edgeSize);//fixed size //can i change?
+	private Canvas resizedCanvas=CanvasUtils.createCanvas(netWidth+edgeSize, netHeight+edgeSize);//fixed size //can i change?
 	
 	private HorizontalPanel successPosPanel;
 	private ExecuteButton analyzeBt;
@@ -1944,7 +2176,105 @@ public void doTestCascadeReal(CascadeNet cascade){
 
 	private ValueListBox<Double> minRateBox;
 	private Vol createVolFromImageData(ImageData imageData){
-		if(imageData.getWidth()!=netWidth+edgeSize || imageData.getHeight()!=netheight+edgeSize){ //somehow still 26x26 don't care!
+		//return createGrayscaleImageVolFromImageData(imageData);
+		return createLBPDepthVolFromImageData(imageData);
+	}
+	private Vol createNewVol(){
+		return ConvnetJs.createVol(1, 1, 8*lbpDataSplit*lbpDataSplit, 0);
+	}
+	private Vol createLBPDepthVolFromImageData(ImageData imageData){
+		if(imageData.getWidth()!=netWidth+edgeSize || imageData.getHeight()!=netHeight+edgeSize){ //somehow still 26x26 don't care!
+			Window.alert("invalid size:"+imageData.getWidth()+","+imageData.getHeight());
+			return null;
+		}
+		
+		
+		//simple lbp return 8 data
+		
+		//LBP here,now no effect on but edge problem possible happen
+		int[][] ints=byteDataIntConverter.convert(imageData); //convert color image to grayscale data
+		int[][] data=lbpConverter.convert(ints);
+		
+		Vol vol=createNewVol();
+		
+		int[] retInt=BinaryPattern.dataToBinaryPattern(data,lbpDataSplit,edgeSize,edgeSize);
+		//set vol
+		for(int i=0;i<retInt.length;i++){
+			//double v=(double)retInt[i]/72-1;//maybe -1 - 1 //split must be 2
+			double v=(double)retInt[i]/18-1;//maybe -1 - 1 //split must be 2
+			if(v>1 || v<-1){
+				LogUtils.log("invalid");
+			}
+			//vol.set(0, 0,i,v);
+			
+			vol.set(0, 0,i,retInt[i]);
+			
+			//vol.set(0, 0,i,(double)retInt[i]/144);//try 0-1 normalize
+			//vol.set(0, 0,i,retInt[i]);//no normalize
+		}
+		
+		int r=getRandom(0, 100);
+		if(r==50){
+			//LogUtils.log(Ints.join(",", retInt));
+		}
+		/*
+		
+		for(int[][] values:splitArray(ints,2)){
+			int[] histogram=lbpConverter.count(ints);
+			//should i normalize myself?
+			for(int i=0;i<8;i++){
+				vol.set(1, 1, i+8*offset, histogram[i]);
+				offset++;
+			}
+		}
+		*/
+		return vol;
+		
+		/*
+		int min=ints.length*ints[0].length;
+		for(int v:histogram){
+			if(v!=0 && v<min){
+				min=v;
+			}
+		}
+		
+		//max 576
+		
+		int[] normalized=new int[8];
+		for(int i=0;i<8;i++){
+			if(histogram[i]>0){
+				normalized[i]=Math.min(16,(int)(histogram[i]/36));//0-16
+			}
+		}	
+		*/
+	}
+	
+
+	
+	
+	//not tested
+	private List<int[][]> splitArray(int[][] arrays,int splitsize){
+		List<int[][]> values=Lists.newArrayList();
+		int w=arrays.length/2;
+		int h=arrays[0].length/2;
+		for(int i=0;i<splitsize*2;i++){
+			int[][] result=new int[arrays.length/2][arrays[0].length/2];
+			int x=i%w;
+			int y=i/w;
+			for(int ix=0;ix<w;ix++){
+				for(int iy=0;iy<h;iy++){
+					result[ix][iy]=arrays[ix+x*w][iy+y*h];
+				}
+			}
+		}
+		
+		
+		return values;
+	}
+	
+	
+	private Vol createGrayscaleImageVolFromImageData(ImageData imageData){
+		if(imageData.getWidth()!=netWidth+edgeSize || imageData.getHeight()!=netHeight+edgeSize){ //somehow still 26x26 don't care!
 			Window.alert("invalid size:"+imageData.getWidth()+","+imageData.getHeight());
 			return null;
 		}
@@ -1953,9 +2283,9 @@ public void doTestCascadeReal(CascadeNet cascade){
 			//LBP here,now no effect on but edge problem possible happen
 			int[][] ints=byteDataIntConverter.convert(imageData); //convert color image to grayscale data
 			int[][] data=lbpConverter.convert(ints);
-			int[][] cropped=new int[netWidth][netheight];
+			int[][] cropped=new int[netWidth][netHeight];
 			for(int x=0;x<netWidth;x++){
-				for(int y=0;y<netheight;y++){
+				for(int y=0;y<netHeight;y++){
 					cropped[x][y]=data[x+edgeSize/2][y+edgeSize/2];
 				}
 			}

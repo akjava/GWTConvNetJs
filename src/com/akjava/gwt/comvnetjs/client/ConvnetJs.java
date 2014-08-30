@@ -7,7 +7,7 @@ public class ConvnetJs {
 	private ConvnetJs(){}
 	
 	public static  final native Net xcreateImageNet(int w,int h,int depth,int classes) /*-{
-	layer_defs = [];
+	var layer_defs = [];
 	layer_defs.push({type:'input', out_sx:w, out_sy:h, out_depth:depth});
 	layer_defs.push({type:'conv', sx:5, filters:16, stride:1, pad:2, activation:'relu'});
 	layer_defs.push({type:'pool', sx:2, stride:2});
@@ -23,7 +23,7 @@ public class ConvnetJs {
     }-*/;
 	
 	public static  final native Net createGrayImageNet(int w,int h,int classes) /*-{
-	layer_defs = [];
+	var layer_defs = [];
 	layer_defs.push({type:'input', out_sx:w, out_sy:h, out_depth:1});
 	layer_defs.push({type:'conv', sx:5, filters:8, stride:1, pad:2, activation:'relu'});
 	layer_defs.push({type:'pool', sx:2, stride:2});
@@ -37,7 +37,7 @@ public class ConvnetJs {
     }-*/;
 	
 	public static  final native Net createGrayImageNet2(int w,int h,int classes) /*-{
-	layer_defs = [];
+	var layer_defs = [];
 	layer_defs.push({type:'input', out_sx:w, out_sy:h, out_depth:1});
 	layer_defs.push({type:'conv', sx:2, filters:8, stride:1, pad:2, activation:'relu'});
 	layer_defs.push({type:'pool', sx:2, stride:2});
@@ -50,21 +50,48 @@ public class ConvnetJs {
 	return net;
     }-*/;
 	
+	/* input value better -1 - 1 */
+	public static  final native Net createRawDepathNet(int x,int y,int depth,int neurons,int classes) /*-{
+	var layer_defs = [];
+	layer_defs.push({type:'input', out_sx:x, out_sy:y, out_depth:depth});
+	layer_defs.push({type:'fc',num_neurons:neurons});
+	
+	layer_defs.push({type:'softmax', num_classes:classes});
+	
+	var net = new $wnd.convnetjs.Net();
+	net.makeLayers(layer_defs);
+	
+	return net;
+    }-*/;
+	
+	
+	/* input value better -1 - 1 */
+	public static  final native Net createRawDepathNet2(int x,int y,int depth,int neurons,int classes) /*-{
+	var layer_defs = [];
+	layer_defs.push({type:'input', out_sx:x, out_sy:y, out_depth:depth});
+	layer_defs.push({type:'fc',num_neurons:neurons});//here is raw
+	layer_defs.push({type:'fc', num_neurons:classes,activation: 'tanh'});
+	layer_defs.push({type:'softmax', num_classes:classes});
+	
+	var net = new $wnd.convnetjs.Net();
+	net.makeLayers(layer_defs);
+	
+	return net;
+    }-*/;
 	
 	
 	public static  final native Net createDepathNet(int x,int y,int depth,int tanh,int classes) /*-{
-	layer_defs = [];
+	var layer_defs = [];
 	layer_defs.push({type:'input', out_sx:x, out_sy:y, out_depth:depth});
-	//layer_defs.push({type:'fc', num_neurons:2000, activation:'relu'});
-	//layer_defs.push({type:'fc', num_neurons:tanh});
-	layer_defs.push({type:'fc', num_neurons:tanh, activation: 'tanh'});
-	layer_defs.push({type:'fc', num_neurons:classes, activation: 'tanh'});//I'm not sure
+	layer_defs.push({type:'fc',num_neurons:tanh,activation: 'tanh'});
+	layer_defs.push({type:'fc', num_neurons:classes,activation: 'tanh'});
+	
 	layer_defs.push({type:'softmax', num_classes:classes});
+	//layer_defs.push({type:'svm', num_classes:classes});
 
-	console.log(layer_defs);
 	var net = new $wnd.convnetjs.Net();
 	net.makeLayers(layer_defs);
-	console.log("created net");
+	
 	return net;
     }-*/;
 	
