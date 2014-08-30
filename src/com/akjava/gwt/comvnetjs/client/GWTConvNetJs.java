@@ -697,8 +697,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		
 		//return ConvnetJs.createDepathNet(1,1,2, 10, 2);//i tried int[] to softmax,but faild
 		
-		return ConvnetJs.createGrayImageNet(24, 24, classNumber);
-		
+		return ConvnetJs.createGrayImageNet2(24, 24, classNumber);
 	}
 	
 	
@@ -964,7 +963,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 
 	//private ArrayList<CVImageeData> negativeImagesData;
 	
-	 final SimpleLBP lbpConverter=new SimpleLBP(true, false);//share
+	 final SimpleLBP lbpConverter=new SimpleLBP(true, 2);//
 	
 	int count=0;
 	List<ConfidenceRect> mutchRect=Lists.newArrayList();
@@ -1872,11 +1871,11 @@ public void doTestCascadeReal(CascadeNet cascade){
 	}
 	
 	private int netWidth=24;
-	private int netHeight=24;
+	private int netheight=24;
 	
 	//expand net because of edge.
-	private int edgeSize=2;//must be can divided 2
-	private Canvas resizedCanvas=CanvasUtils.createCanvas(netWidth+edgeSize, netHeight+edgeSize);//fixed size //can i change?
+	private int edgeSize=4;//must be can divided 2
+	private Canvas resizedCanvas=CanvasUtils.createCanvas(netWidth+edgeSize, netheight+edgeSize);//fixed size //can i change?
 	
 	private HorizontalPanel successPosPanel;
 	private ExecuteButton analyzeBt;
@@ -1945,7 +1944,7 @@ public void doTestCascadeReal(CascadeNet cascade){
 
 	private ValueListBox<Double> minRateBox;
 	private Vol createVolFromImageData(ImageData imageData){
-		if(imageData.getWidth()!=netWidth+edgeSize || imageData.getHeight()!=netHeight+edgeSize){ //somehow still 26x26 don't care!
+		if(imageData.getWidth()!=netWidth+edgeSize || imageData.getHeight()!=netheight+edgeSize){ //somehow still 26x26 don't care!
 			Window.alert("invalid size:"+imageData.getWidth()+","+imageData.getHeight());
 			return null;
 		}
@@ -1954,9 +1953,9 @@ public void doTestCascadeReal(CascadeNet cascade){
 			//LBP here,now no effect on but edge problem possible happen
 			int[][] ints=byteDataIntConverter.convert(imageData); //convert color image to grayscale data
 			int[][] data=lbpConverter.convert(ints);
-			int[][] cropped=new int[netWidth][netHeight];
+			int[][] cropped=new int[netWidth][netheight];
 			for(int x=0;x<netWidth;x++){
-				for(int y=0;y<netHeight;y++){
+				for(int y=0;y<netheight;y++){
 					cropped[x][y]=data[x+edgeSize/2][y+edgeSize/2];
 				}
 			}
