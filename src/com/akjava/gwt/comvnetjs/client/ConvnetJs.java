@@ -70,8 +70,10 @@ public class ConvnetJs {
 	var layer_defs = [];
 	layer_defs.push({type:'input', out_sx:x, out_sy:y, out_depth:depth});
 	layer_defs.push({type:'fc',num_neurons:neurons});//here is raw
+	//layer_defs.push({type:'fc',num_neurons:neurons,activation: 'tanh'});//here is raw
 	//layer_defs.push({type:'fc', num_neurons:classes,activation: 'sigmoid'});
-	layer_defs.push({type:'fc', num_neurons:classes,activation: 'relu'});
+	//layer_defs.push({type:'fc', num_neurons:classes,activation: 'relu'});
+	layer_defs.push({type:'fc', num_neurons:classes,activation: 'tanh'});
 	layer_defs.push({type:'softmax', num_classes:classes});
 	
 	var net = new $wnd.convnetjs.Net();

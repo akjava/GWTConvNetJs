@@ -11,6 +11,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import javax.management.RuntimeErrorException;
+
 import com.akjava.gwt.html5.client.download.HTML5Download;
 import com.akjava.gwt.html5.client.file.File;
 import com.akjava.gwt.html5.client.file.FileUploadForm;
@@ -65,6 +67,7 @@ import com.google.gwt.user.client.Window;
 import com.google.gwt.user.client.ui.Anchor;
 import com.google.gwt.user.client.ui.Button;
 import com.google.gwt.user.client.ui.DockLayoutPanel;
+import com.google.gwt.user.client.ui.DoubleBox;
 import com.google.gwt.user.client.ui.HorizontalPanel;
 import com.google.gwt.user.client.ui.Image;
 import com.google.gwt.user.client.ui.Label;
@@ -422,8 +425,13 @@ Button bt2b=new Button("Do Test Last Cascade first 100 item Passed parent filter
 			
 			@Override
 			public void onClick(ClickEvent event) {
-				LogUtils.log("cascade:"+cascades.size());
-				doTestCascadeReal(getLastCascade());
+				TestResult result=doTestCascadeReal(getLastCascade(),true);
+				
+				
+				LogUtils.log("mutchresult:"+result.successMatch+","+result.faildMatch);
+				LogUtils.log("missresult:"+result.successMiss+","+result.missMatch);
+				
+				LogUtils.log("finish test:"+result.getTestTime()+"s");
 			}
 		});
 		root.add(bt2b);
@@ -442,7 +450,9 @@ Button bt3=new Button("Do Test All(can only train all)",new ClickHandler() {
 			
 			@Override
 			public void onClick(ClickEvent event) {
-				doTestLastPositiveTrainedAll();
+				TestResult result=doTestLastPositiveTrainedAll();
+				
+				LogUtils.log("finish Test all trained-positive datas:"+result.getTestTime() +"s" + " successMatch="+result.successMatch+",faildMatch="+result.faildMatch);
 			}
 		});
 		root.add(bt3);
@@ -472,6 +482,10 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 		});
 		root.add(saveAllBt);
 		
+		HorizontalPanel negativeRatePanel=new HorizontalPanel();
+		negativeRatePanel.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
+		root.add(negativeRatePanel);
+		negativeRatePanel.add(new Label("Negative ratio 1 : positive ratio "));
 		/**
 		 * besically this called after load initial-jsons this means at least you train twice same positives
 		 */
@@ -480,10 +494,26 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 			list.addItem(String.valueOf(i));
 		}
 		list.setSelectedIndex(1);
-		root.add(list);
+		negativeRatePanel.add(list);
+		
+		final Label statusLabel=new Label("-");
+		root.add(statusLabel);
 		
 		HorizontalPanel repeatBts=new HorizontalPanel();
+		repeatBts.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
 		root.add(repeatBts);
+		
+		repeatBts.add(new Label("MinHitRate"));
+		final DoubleBox matchRateBox=new DoubleBox();
+		matchRateBox.setValue(0.98);
+		matchRateBox.setWidth("100px");
+		repeatBts.add(matchRateBox);
+		
+		repeatBts.add(new Label("FalseAlarmRate"));
+		final DoubleBox falseAlarmBox=new DoubleBox();
+		falseAlarmBox.setValue(0.3);
+		falseAlarmBox.setWidth("100px");
+		repeatBts.add(falseAlarmBox);
 		
 		Button cancel=new Button("Cancel",new ClickHandler() {
 			
@@ -502,7 +532,9 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 				getLastCascade().setMinRate(minRateBox.getValue());
 				autoRepeatCancel=false;
 				
-				final double targetRate=0.98;
+				final double targetRate=matchRateBox.getValue();
+				final double falseAlarm=falseAlarmBox.getValue();
+				
 				final int maxIteration=10000;
 				Timer timer=new Timer(){
 					int iteration=0;
@@ -523,14 +555,19 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 						
 						doing=true;
 						doRepeat(false);
-						doTestLastPositiveTrainedAll();
+						TestResult result=doTestLastPositiveTrainedAll();
+						TestResult missHit=doTestCascadeReal(getLastCascade(),false);
 						
-						if(lastTestMutchRate>targetRate){
-							LogUtils.log("reach target-muth-rate.stopped "+lastTestMutchRate+", target="+targetRate);
+						if(result.getMatchRate()>targetRate && missHit.getFalseAlarmRate()<falseAlarm){
+							statusLabel.setText(iteration+":reach target-muth-rate.stopped "+result.getMatchRate()+">"+targetRate +" falseAlarm="+missHit.getFalseAlarmRate()+"<"+falseAlarm);
 							cancel();
 							doing=false;
 							setEnabled(true);
 							return;
+						}else{
+							
+							statusLabel.setText(iteration+":minHitRate="+result.getMatchRate()+"<"+targetRate +" falseAlarm="+missHit.getFalseAlarmRate()+">"+falseAlarm);
+							
 						}
 						
 						iteration++;
@@ -972,7 +1009,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	
 	Net createNewNet(){
 		
-		return ConvnetJs.createRawDepathNet2(1,1,8*lbpDataSplit*lbpDataSplit, 8*lbpDataSplit*lbpDataSplit*10, 2);
+		return ConvnetJs.createRawDepathNet2(1,1,8*lbpDataSplit*lbpDataSplit, 8, 2);//*lbpDataSplit*lbpDataSplit
 		//return ConvnetJs.createDepathNet(1,1,8*lbpDataSplit*lbpDataSplit, 8*lbpDataSplit*lbpDataSplit*10, 2);
 		
 		//return ConvnetJs.createGrayImageNet2(24, 24, classNumber);
@@ -1030,7 +1067,7 @@ protected void doRepeat(boolean initial) {
 		}
 		
 
-		LogUtils.log("trained-both:"+trained+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
+		//LogUtils.log("trained-both:"+trained+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
 	}
 	protected void doTrain(int rate,boolean initial) {
 
@@ -1275,7 +1312,7 @@ protected void doRepeat(boolean initial) {
 	protected void retrainFaildPositives() {
 		Stopwatch watch=Stopwatch.createStarted();
 		int trained=0;
-		for(String dataUrl:faildPositivedDatas){
+		for(String dataUrl:faildPositivedDatasForRetrainCommand){
 			
 			//ImageElement baseImage=ImageElementUtils.create(dataUrl);
 			
@@ -1782,8 +1819,8 @@ protected void doRepeat(boolean initial) {
 		
 	}
 	
-	double lastTestMutchRate;
-	public void doTestLastPositiveTrainedAll(){//train 1200 = 24s
+	//double lastTestMutchRate;
+	public TestResult  doTestLastPositiveTrainedAll(){//train 1200 = 24s
 		temporalyIgnoreList.clear();
 		
 		successPosPanel.clear();
@@ -1799,7 +1836,7 @@ protected void doRepeat(boolean initial) {
 		int missMatch=0;
 		
 		
-		LogUtils.log("test-size:"+trainedPositiveDatas.size());
+		//LogUtils.log("test-size:"+trainedPositiveDatas.size());
 		
 		//trainedPositiveDatas.add(new PassedData(vol, pdata.getFileName()+"#"+rect.toString()));
 		
@@ -1820,12 +1857,14 @@ protected void doRepeat(boolean initial) {
 			
 		}
 		
-		lastTestMutchRate=(double)successMatch/(successMatch+faildMatch);
+		//
 		
 		
 		//LogUtils.log("missresult:"+successMiss+","+missMatch);
+		TestResult result=new TestResult(successMatch,faildMatch,0,0);
+		result.setTestTime(stopWatch.elapsed(TimeUnit.SECONDS));
+		return result;
 		
-		LogUtils.log("finish Test all trained-positive datas:"+ stopWatch.elapsed(TimeUnit.SECONDS)+"s" + " successMatch="+successMatch+",faildMatch="+faildMatch);
 	}
 	
 	public CascadeNet getLastCascade(){
@@ -1840,7 +1879,7 @@ protected void doRepeat(boolean initial) {
 	}
 	
 	public void doTestAllPositivesAtLastCascade(){//train 1200 = 60s
-		faildPositivedDatas.clear();
+		faildPositivedDatasForRetrainCommand.clear();
 		successPosPanel.clear();
 		faildPosPanel.clear();
 		successNegativesPanel.clear();
@@ -1887,7 +1926,7 @@ protected void doRepeat(boolean initial) {
 			}else{
 				faildMatch++;
 				String newDataUrl=resizedCanvas.toDataUrl();
-				faildPositivedDatas.add(newDataUrl);//reuse when retrain
+				faildPositivedDatasForRetrainCommand.add(newDataUrl);//reuse when retrain
 				faildPosPanel.add(new Image(newDataUrl));
 			}
 			
@@ -1902,10 +1941,10 @@ protected void doRepeat(boolean initial) {
 	}
 	
 	
-	List<String> faildPositivedDatas=Lists.newArrayList();
+	List<String> faildPositivedDatasForRetrainCommand=Lists.newArrayList();
 	
 	public void doTest(){
-		faildPositivedDatas.clear();
+		faildPositivedDatasForRetrainCommand.clear();
 		successPosPanel.clear();
 		faildPosPanel.clear();
 		successNegativesPanel.clear();
@@ -1954,7 +1993,7 @@ protected void doRepeat(boolean initial) {
 			}else{
 				faildMatch++;
 				String newDataUrl=resizedCanvas.toDataUrl();
-				faildPositivedDatas.add(newDataUrl);//reuse when retrain
+				faildPositivedDatasForRetrainCommand.add(newDataUrl);//reuse when retrain
 				faildPosPanel.add(new Image(newDataUrl));
 			}
 			
@@ -2029,11 +2068,75 @@ protected void doRepeat(boolean initial) {
 			this.negative=negative;
 		}
 	}
-public void doTestCascadeReal(CascadeNet cascade){
+	
+	
+	public class TestResult{
+		int successMatch=0;
+		int faildMatch=0;
+		long testTime;
 		
-		faildPositivedDatas.clear();
-		successPosPanel.clear();
-		faildPosPanel.clear();
+		public long getTestTime() {
+			return testTime;
+		}
+		public void setTestTime(long testTime) {
+			this.testTime = testTime;
+		}
+		public TestResult(int successMatch, int faildMatch, int successMiss, int missMatch) {
+			super();
+			this.successMatch = successMatch;
+			this.faildMatch = faildMatch;
+			this.successMiss = successMiss;
+			this.missMatch = missMatch;
+		}
+		int successMiss=0;
+		int missMatch=0;
+		public int getSuccessMatch() {
+			return successMatch;
+		}
+		public void setSuccessMatch(int successMatch) {
+			this.successMatch = successMatch;
+		}
+		public int getFaildMatch() {
+			return faildMatch;
+		}
+		public void setFaildMatch(int faildMatch) {
+			this.faildMatch = faildMatch;
+		}
+		public int getSuccessMiss() {
+			return successMiss;
+		}
+		public void setSuccessMiss(int successMiss) {
+			this.successMiss = successMiss;
+		}
+		public int getMissMatch() {
+			return missMatch;
+		}
+		public void setMissMatch(int missMatch) {
+			this.missMatch = missMatch;
+		}
+		
+		public double getMatchRate(){
+			return (double)successMatch/(successMatch+faildMatch);
+		}
+		
+		//how many
+		public double getFalseAlarmRate(){
+			if(missMatch==0){
+				return 0;
+			}
+			return (double)missMatch/(successMiss+missMatch);
+		}
+	}
+public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
+		
+	
+		
+		if(testPositives){
+			faildPositivedDatasForRetrainCommand.clear();
+			successPosPanel.clear();
+			faildPosPanel.clear();
+		}
+		
 		successNegativesPanel.clear();
 		faildNegativePanel.clear();
 		
@@ -2051,7 +2154,7 @@ public void doTestCascadeReal(CascadeNet cascade){
 		
 		
 		double minPositiveRate=minRateBox.getValue();
-		
+		if(testPositives){
 		for(int i=0;i<testNumber;i++){
 			CVImageeData pdata=positivesZip.get(i);
 			Optional<ImageElement> imageElementOptional=positivesZip.getImageElement(pdata);
@@ -2082,12 +2185,14 @@ public void doTestCascadeReal(CascadeNet cascade){
 			}else{
 				faildMatch++;
 				String newDataUrl=resizedCanvas.toDataUrl();
-				faildPositivedDatas.add(newDataUrl);//reuse when retrain
+				faildPositivedDatasForRetrainCommand.add(newDataUrl);//reuse when retrain
 				faildPosPanel.add(new Image(newDataUrl));
 			}
 			
 		}
+		}
 		
+		//create new negative datas
 		if(passedVols.size()==0){
 			stopWatch.stop();
 			Stopwatch stopWatch2=Stopwatch.createStarted();
@@ -2095,7 +2200,7 @@ public void doTestCascadeReal(CascadeNet cascade){
 				Optional<Vol> optionalR=createRandomVol(cascade);
 				if(!optionalR.isPresent()){
 					Window.alert("invalid test data");
-					return;
+					throw new RuntimeException("invalid data");
 				}
 				Vol vol=optionalR.get();
 				passedVols.add(new PassedData(vol,lastDataUrl));
@@ -2124,15 +2229,17 @@ public void doTestCascadeReal(CascadeNet cascade){
 			}
 		}
 		
-		LogUtils.log("mutchresult:"+successMatch+","+faildMatch);
-		LogUtils.log("missresult:"+successMiss+","+missMatch);
 		
-		LogUtils.log("finish test:"+ stopWatch.elapsed(TimeUnit.SECONDS)+"s");
+		
+		TestResult result=new TestResult(successMatch,faildMatch,successMiss,missMatch);
+		result.setTestTime(stopWatch.elapsed(TimeUnit.SECONDS));
+		
+		return result;
 	}
 
 	public void doTestCascade(CascadeNet cascade){
 		
-		faildPositivedDatas.clear();
+		faildPositivedDatasForRetrainCommand.clear();
 		successPosPanel.clear();
 		faildPosPanel.clear();
 		successNegativesPanel.clear();
@@ -2180,7 +2287,7 @@ public void doTestCascadeReal(CascadeNet cascade){
 			}else{
 				faildMatch++;
 				String newDataUrl=resizedCanvas.toDataUrl();
-				faildPositivedDatas.add(newDataUrl);//reuse when retrain
+				faildPositivedDatasForRetrainCommand.add(newDataUrl);//reuse when retrain
 				faildPosPanel.add(new Image(newDataUrl));
 			}
 			
@@ -2213,8 +2320,8 @@ public void doTestCascadeReal(CascadeNet cascade){
 		LogUtils.log("finish test:"+ stopWatch.elapsed(TimeUnit.SECONDS)+"s");
 	}
 	
-	private int netWidth=24;
-	private int netHeight=24;
+	private int netWidth=32;
+	private int netHeight=32;
 	
 	//expand net because of edge.
 	private int edgeSize=4;//must be can divided 2
@@ -2311,8 +2418,9 @@ public void doTestCascadeReal(CascadeNet cascade){
 		int[] retInt=BinaryPattern.dataToBinaryPattern(data,lbpDataSplit,edgeSize,edgeSize);
 		//set vol
 		for(int i=0;i<retInt.length;i++){
-			double v=(double)retInt[i]/72-1;//maybe range(-1 - 1) //split must be 2 for 12x12(144) block
-			//double v=(double)retInt[i]/18-1;//maybe -1 - 1 //split must be 4 for 6x6(36) block
+			double v=(double)retInt[i]/128-1; //max valu is 16x16(256) to range(-1 - 1)
+			//double v=(double)retInt[i]/72-1;//maybe range(-1 - 1) //split must be 2 for 12x12(144) block <-- for 24x24
+			//double v=(double)retInt[i]/18-1;//maybe -1 - 1 //split must be 4 for 6x6(36) block  <-- for 24x24
 			
 			if(v>1 || v<-1){
 				LogUtils.log("invalid");
