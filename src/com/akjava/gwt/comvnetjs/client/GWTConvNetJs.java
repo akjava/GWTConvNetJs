@@ -1010,7 +1010,11 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	
 	Net createNewNet(){
 		
-		return ConvnetJs.createRawDepathNet2(1,1,8*lbpDataSplit*lbpDataSplit, 8, 2);//*lbpDataSplit*lbpDataSplit
+		//create positive 2 negatives
+		int depth=8*lbpDataSplit*lbpDataSplit;
+		int neutron=8;
+		int classes=5; //1pos and 4 neg(lbp details)
+		return ConvnetJs.createRawDepathNet2(1,1,depth,neutron , classes);//*lbpDataSplit*lbpDataSplit
 		//return ConvnetJs.createDepathNet(1,1,8*lbpDataSplit*lbpDataSplit, 8*lbpDataSplit*lbpDataSplit*10, 2);
 		
 		//return ConvnetJs.createGrayImageNet2(24, 24, classNumber);
@@ -1063,13 +1067,16 @@ protected void doRepeat(boolean initial) {
 		
 			//LogUtils.log("set-vallue:"+Joiner.on(",").join(copy.getWAsList()));
 			//getLastCascadesTrainer().train(copy, passedData.isNegative()?1:0);
-			getLastCascadesTrainer().train(origin, passedData.isNegative()?1:0);
+			getLastCascadesTrainer().train(origin, passedData.getClassIndex());
 			trained++;
 		}
 		
 
 		//LogUtils.log("trained-both:"+trained+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
 	}
+
+	//int negIndex=1;
+	int maxNegIndex=2;
 	protected void doTrain(int rate,boolean initial) {
 
 		if(initial)
@@ -1144,9 +1151,27 @@ protected void doRepeat(boolean initial) {
 					}
 					
 				Vol neg= optional.get();
-				getLastCascade().getTrainer().train(neg, 1);
-				lastLeaningList.add(new PassedData(neg, true));
-				negative++;
+				
+				double total=0;
+				for(int i=0;i<neg.getLength();i++){
+					total+=neg.getW(i);
+				}
+				//try separate flat & active
+				int negIndex=1;
+				if(total>0){
+					if(total<0.5){
+						negIndex=3;
+					}else{
+						negIndex=4;
+					}
+				}else{
+					if(total>-0.5){
+						negIndex=2;
+					}
+				}
+				
+				getLastCascade().getTrainer().train(neg, negIndex);
+				lastLeaningList.add(new PassedData(neg, negIndex));
 				
 					
 				}
@@ -2041,12 +2066,11 @@ protected void doRepeat(boolean initial) {
 	public class PassedData{
 		private Vol vol;
 		private String dataUrl;
-		private boolean negative;
-		public boolean isNegative() {
-			return negative;
-		}
-		public void setNegative(boolean negative) {
-			this.negative = negative;
+		
+		private int classIndex;
+	
+		public int getClassIndex() {
+			return classIndex;
 		}
 		public Vol getVol() {
 			return vol;
@@ -2064,9 +2088,9 @@ protected void doRepeat(boolean initial) {
 			this.vol=vol;
 			this.dataUrl=dataUrl;
 		}
-		public PassedData(Vol vol,boolean negative){
+		public PassedData(Vol vol,int classIndex){
 			this.vol=vol;
-			this.negative=negative;
+			this.classIndex=classIndex;
 		}
 	}
 	

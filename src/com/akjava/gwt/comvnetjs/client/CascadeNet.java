@@ -137,7 +137,8 @@ public VolFilter(CascadeNet cnet,int index){
 		if(useMinRate){
 			return result.getW(0)>cnet.getMinRate();
 		}else{
-			return result.getW(0)>result.getW(1);
+			return result.getW(0)>result.getW(1) && result.getW(0)>result.getW(2) && result.getW(0)>result.getW(3) && result.getW(0)>result.getW(4);
+			//return result.getW(0)>result.getW(1) && result.getW(0)>result.getW(2);
 			//return result.getW(0)>result.getW(1);
 		}
 		//
