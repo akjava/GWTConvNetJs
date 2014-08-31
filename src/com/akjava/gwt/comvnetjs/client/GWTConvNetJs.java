@@ -417,6 +417,7 @@ Button bt2=new Button("Do Test Last Cascade first 100 item(quick but not real vo
 			
 		}
 	});
+	minRateBox.setVisible(false);//now svg version
 	minRateBox.setValue(0.5);
 	minRateBox.setAcceptableValues(doubles);
 	root.add(minRateBox);

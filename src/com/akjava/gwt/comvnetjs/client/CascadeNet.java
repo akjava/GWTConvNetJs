@@ -134,14 +134,28 @@ public VolFilter(CascadeNet cnet,int index){
 	@Override
 	public boolean apply(Vol input) {
 		Vol result=cnet.getNet().forward(input);
-		return result.getW(0)>cnet.getMinRate();
-		//return result.getW(0)>result.getW(1);
+		if(useMinRate){
+			return result.getW(0)>cnet.getMinRate();
+		}else{
+			return result.getW(0)>result.getW(1);
+			//return result.getW(0)>result.getW(1);
+		}
+		//
 	}
 	
 }
 
+boolean useMinRate;
 
 
+
+public boolean isUseMinRate() {
+	return useMinRate;
+}
+
+public void setUseMinRate(boolean useMinRate) {
+	this.useMinRate = useMinRate;
+}
 
 public CascadeNet getParent(){
 	return parent;
