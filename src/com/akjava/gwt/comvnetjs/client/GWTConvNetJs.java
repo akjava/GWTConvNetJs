@@ -100,10 +100,9 @@ public class GWTConvNetJs implements EntryPoint {
 	private List<PassedData> trainedPositiveDatas=new ArrayList<GWTConvNetJs.PassedData>();
 	private HorizontalPanel faildPosPanel;
 	
-	private Canvas anotherCanvas;
+	private Canvas imageShowingCanvas;
 	
 	private List<CascadeNet> cascades=Lists.newArrayList();
-	private ExecuteButton trainSecondBt;
 	
 	private CVImageZip negativesZip;
 	private CVImageZip positivesZip;
@@ -111,7 +110,7 @@ public class GWTConvNetJs implements EntryPoint {
 	
 	private String lastJson;
 	
-	private CascadeNet dummyCascade;
+	private CascadeNet dummyCascadeForKeepNegativeTrained;
 	private void doUndo(){
 		fromJson(lastJson);
 	}
@@ -142,64 +141,74 @@ public class GWTConvNetJs implements EntryPoint {
 		
 	}
 	
+	private VerticalPanel createImageDetectionPanel(){
+		VerticalPanel root=new VerticalPanel();
+		//create up-photo controling area
+				imageShowingCanvas=Canvas.createIfSupported();
+				HorizontalPanel topImageControlPanel=new HorizontalPanel();
+				topImageControlPanel.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
+				
+				FileUploadForm imageUpload= FileUtils.createSingleFileUploadForm(new DataURLListener() {
+					
+					@Override
+					public void uploaded(File file, String text) {
+						
+						ImageElementUtils.copytoCanvas(text, imageShowingCanvas);
+						Timer timer=new Timer(){
+							@Override
+							public void run() {
+								//detectImage(anotherCanvas,8,2.4);//1.2 is default (1-16,1.2 - 3.6)
+								//detectImage(anotherCanvas,4,1.6);
+								getLastCascade().setMinRate(minRateBox.getValue());
+								detectImage(imageShowingCanvas,6,1.8);
+								
+								
+							}};
+						timer.schedule(100);
+						//
+					}
+				}, true);
+				imageUpload.setAccept("image/*");
+				root.add(new Label("detect-canvas"));
+				root.add(imageShowingCanvas);
+				root.add(topImageControlPanel);
+				topImageControlPanel.add(new Label("select image(after that detection start automatic) recommend around 250x250.otherwise take too mauch time"));
+				topImageControlPanel.add(imageUpload);
+				return root;
+	}
+	
 	public void onModuleLoad() {
+		sharedCanvas = Canvas.createIfSupported();//shared for multiple-task
+		
 		
 		DockLayoutPanel dockRoot=new DockLayoutPanel(Unit.PX);
 		RootLayoutPanel.get().add(dockRoot);
 		
 		
-		
+		//create bottom-south panel
 		ScrollPanel scroll=new ScrollPanel();
 		dockRoot.addSouth(scroll, 250);
-		final VerticalPanel result=new VerticalPanel();
-		scroll.add(result);
+		VerticalPanel bottomPanel=createBottomPanel();
+		scroll.add(bottomPanel);
 		scroll.setSize("100%", "100%");
-		
-		dummyCascade=new CascadeNet(null, createNewNet());
-		
-		
-		final VerticalPanel root=PanelUtils.createScrolledVerticalPanel(dockRoot);
-		
-		
-		
-		anotherCanvas=Canvas.createIfSupported();
-		HorizontalPanel h=new HorizontalPanel();
-		h.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
-		
-		FileUploadForm imageUpload= FileUtils.createSingleFileUploadForm(new DataURLListener() {
-			
-			@Override
-			public void uploaded(File file, String text) {
+		//for some simple test
+		bottomPanel.add(cerateTestButtons());
 				
-				ImageElementUtils.copytoCanvas(text, anotherCanvas);
-				Timer timer=new Timer(){
-					@Override
-					public void run() {
-						//detectImage(anotherCanvas,8,2.4);//1.2 is default (1-16,1.2 - 3.6)
-						//detectImage(anotherCanvas,4,1.6);
-						getLastCascade().setMinRate(minRateBox.getValue());
-						detectImage(anotherCanvas,6,1.8);
-						
-						
-					}};
-				timer.schedule(100);
-				//
-			}
-		}, true);
-		imageUpload.setAccept("image/*");
-		root.add(new Label("detect-canvas"));
-		root.add(anotherCanvas);
-		root.add(h);
-		h.add(new Label("select image(after that detection start automatic) recommend around 250x250.otherwise take too mauch time"));
-		h.add(imageUpload);
+				
+		
+		
+		dummyCascadeForKeepNegativeTrained=new CascadeNet(null, createNewNet());
+		
+		//initial cascade start with empty
+		cascades.add(new CascadeNet(null, createNewNet()));
+		
+		
+		final VerticalPanel mainPanel=PanelUtils.createScrolledVerticalPanel(dockRoot);
+		mainPanel.add(createImageDetectionPanel());
 		
 		
 		
-	
-		
-		sharedCanvas = Canvas.createIfSupported();
-		
-		
+		//I'm not sure still need undo?
 		Button undo=new Button("Undo",new ClickHandler() {
 			
 			@Override
@@ -211,218 +220,37 @@ public class GWTConvNetJs implements EntryPoint {
 				doUndo();
 			}
 		});
-		root.add(undo);
+		mainPanel.add(undo);
 		
-		analyzeBt = new ExecuteButton("Train Negative at last-cascades 10"){
-
-			@Override
-			public void executeOnClick() {
-				lastJson=toJson();
-				startTraining(10);
-			}
-			
-			
-		};
-		root.add(analyzeBt);
-		
-		ExecuteButton bt5 = new ExecuteButton("Train Negative at last-cascades 5"){
-
-			@Override
-			public void executeOnClick() {
-				lastJson=toJson();
-				startTraining(5);
-			}
-			
-			
-		};
-		root.add(bt5);
-		
-		ExecuteButton bt1 = new ExecuteButton("Train Negative at last-cascades 1"){
-
-			@Override
-			public void executeOnClick() {
-				lastJson=toJson();
-				startTraining(1);
-			}
-			
-			
-		};
-		root.add(bt1);
-		
-		trainSecondBt = new ExecuteButton("Add New Cascade & Train Positive & Negative(step by step it'take extreme time to train)"){
-
-			@Override
-			public void executeOnClick() {
-				CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),createNewNet(),null);
-				cascades.add(next);
-				
-				//train last one
-				trainBoth(cascades.get(cascades.size()-1));
-				passedVols.clear();
-			}
-			
-			
-		};
-		//root.add(trainSecondBt);
-		
-		ExecuteButton trainPositiveBt = new ExecuteButton("Add New Cascade & Train Positive"){
-
-			@Override
-			public void executeOnClick() {
-				CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),createNewNet(),null);
-				cascades.add(next);
-				
-				trainPositiveOnly();
-				passedVols.clear();
-			}
-			
-			
-		};
-		//root.add(trainPositiveBt);
 		
 		ExecuteButton addBt = new ExecuteButton("Add New Cascade"){
-
 			@Override
 			public void executeOnClick() {
-				//handle min-rate first
-				double minRate=minRateBox.getValue();
-				minrateValues.add(minRate);
-				
-				getLastCascade().setMinRate(minRate);
-				
-				minRateBox.setValue(0.5);
-				
-				
-				CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),createNewNet(),null);
-				cascades.add(next);
-				
-				passedVols.clear();
-				//trainPositiveOnly();
-				droppedList.addAll(temporalyIgnoreList);
-				temporalyIgnoreList.clear();
-				
-				
+				addNewCascade();
 			}
-			
-			
 		};
-		root.add(addBt);
+		mainPanel.add(addBt);
 		
-		trainSecondBt.setEnabled(false);
-		//analyzeBt.setEnabled(false);
 		
-		/*
-		root.add(new Label("upload net(@deprecated) use upload cascades"));
-		netUploadBt = FileUtils.createSingleTextFileUploadForm(new DataURLListener() {
-			
-			@Override
-			public void uploaded(File file, String text) {
-				cascades.clear();
-				net=Net.fromJsonString(text);
-				trainer = ConvnetJs.createTrainer(net,1);//need recreate
-				
-				cascades.add(new CascadeNet(null, net,trainer));//root
-				
-				analyzeBt.setEnabled(true);
-				
-				//create new because can't create that way.
-				
-				trainSecondBt.setEnabled(true);
-			}
-		}, true);
-		
-		//root.add(netUploadBt);
-		netUploadBt.setAccept(Lists.newArrayList(".json",".js"));
-		netUploadBt.setEnabled(false);
-		*/
-		
-		root.add(new Label("load cascades(initially first-cascade.json: loades)"));
+		mainPanel.add(new Label("load last-saved cascades(sometime compatible problem happen)"));
 		FileUploadForm cascadeUploadBt = FileUtils.createSingleTextFileUploadForm(new DataURLListener() {
-			
 			@Override
 			public void uploaded(File file, String text) {
 				fromJson(text);
-				
-				
 			}
 		}, true);
-		root.add(cascadeUploadBt);
+		mainPanel.add(cascadeUploadBt);
 		cascadeUploadBt.setAccept(Lists.newArrayList(".json",".js"));
 		
 		
-		//maybe you can replace cascades4 or something already cascaded
-		try {
-			new RequestBuilder(RequestBuilder.GET,"first-cascade.json").sendRequest(null, new RequestCallback() {
-				
-				@Override
-				public void onResponseReceived(Request request, Response response) {
-					//same upload net;
-					Net net=Net.fromJsonString(response.getText());
-					Trainer trainer = ConvnetJs.createTrainer(net,1);//need recreate
-					
-					cascades.add(new CascadeNet(null, net,trainer));//root
-					
-					analyzeBt.setEnabled(true);
-					
-					
-					trainSecondBt.setEnabled(true);
-				}
-				
-				@Override
-				public void onError(Request request, Throwable exception) {
-					LogUtils.log(exception.getMessage());
-				}
-			});
-		} catch (RequestException e) {
-			LogUtils.log(e.getMessage());
-			e.printStackTrace();
-		}
+		
+		//loadInitialJson(); //right now no need because setting so changed.
 		
 		
-		Button bt=new Button("Do Test pos & neg(First cascade) maybe deprecated?",new ClickHandler() {
-			
-			@Override
-			public void onClick(ClickEvent event) {
-				doTest();
-			}
-		});
-		//root.add(bt);
-		
-		//test second cascade pass normally
-Button bt2=new Button("Do Test Last Cascade first 100 item(quick but not real vol)",new ClickHandler() {
-			
-			@Override
-			public void onClick(ClickEvent event) {
-				LogUtils.log("cascade:"+cascades.size());
-				doTestCascade(cascades.get(cascades.size()-1));
-			}
-		});
-		//root.add(bt2);
+		createMinRateBox();
+		//root.add(minRateBox); //right now stop using this.because now 1pos & 4 neg classes
 
-	List<Double> doubles=Lists.newArrayList();
-	for(double i=750;i>=250;i-=25){
-		doubles.add(i/1000);
-	}
-	minRateBox = new ValueListBox<Double>(new  Renderer<Double>() {
-
-		@Override
-		public String render(Double object) {
-			String v=object.toString();
-			return v.substring(0,Math.min(v.length(), 4));
-		}
-
-		@Override
-		public void render(Double object, Appendable appendable) throws IOException {
-			// TODO Auto-generated method stub
-			
-		}
-	});
-	minRateBox.setVisible(false);//now svg version
-	minRateBox.setValue(0.5);
-	minRateBox.setAcceptableValues(doubles);
-	root.add(minRateBox);
-
-Button bt2b=new Button("Do Test Last Cascade first 100 item Passed parent filters Vol",new ClickHandler() {
+		Button bt2b=new Button("Do Test Last Cascade first 100 item Passed parent filters Vol",new ClickHandler() {
 			
 			@Override
 			public void onClick(ClickEvent event) {
@@ -435,19 +263,10 @@ Button bt2b=new Button("Do Test Last Cascade first 100 item Passed parent filter
 				LogUtils.log("finish test:"+result.getTestTime()+"s");
 			}
 		});
-		root.add(bt2b);
+		mainPanel.add(bt2b);
 		
 		
-Button btSecond=new Button("Do Test2(all positive datas) at Last-Cascade",new ClickHandler() {
-			
-			@Override
-			public void onClick(ClickEvent event) {
-				doTestAllPositivesAtLastCascade();
-			}
-		});
-		//root.add(btSecond);
-		
-Button bt3=new Button("Do Test All(can only train all)",new ClickHandler() {
+		Button bt3=new Button("Do Test Positives All",new ClickHandler() {
 			
 			@Override
 			public void onClick(ClickEvent event) {
@@ -456,53 +275,51 @@ Button bt3=new Button("Do Test All(can only train all)",new ClickHandler() {
 				LogUtils.log("finish Test all trained-positive datas:"+result.getTestTime() +"s" + " successMatch="+result.successMatch+",faildMatch="+result.faildMatch);
 			}
 		});
-		root.add(bt3);
+		mainPanel.add(bt3);
 		
-		/*
-Button saveBt=new Button("Save",new ClickHandler() {//deprecated for first 
-			
-			@Override
-			public void onClick(ClickEvent event) {
-				String json=net.toJsonString();
-				Anchor downloadJson=HTML5Download.get().generateTextDownloadLink(json, "trained.json", "download net",true);
-				root.add(downloadJson);
-			}
-		});
-		*/
-		//root.add(saveBt);
 		
-Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
+		Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 			
 			@Override
 			public void onClick(ClickEvent event) {
 				String json=toJson();
 				
 				Anchor downloadJson=HTML5Download.get().generateTextDownloadLink(json, "cascades.json", "download cascades",true);
-				root.add(downloadJson);
+				mainPanel.add(downloadJson);
 			}
 		});
-		root.add(saveAllBt);
+		mainPanel.add(saveAllBt);
 		
-		HorizontalPanel negativeRatePanel=new HorizontalPanel();
-		negativeRatePanel.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
-		root.add(negativeRatePanel);
-		negativeRatePanel.add(new Label("Negative ratio 1 : positive ratio "));
-		/**
-		 * besically this called after load initial-jsons this means at least you train twice same positives
-		 */
-		final ListBox list=new ListBox();
-		for(int i=1;i<=30;i++){
-			list.addItem(String.valueOf(i));
-		}
-		list.setSelectedIndex(1);
-		negativeRatePanel.add(list);
 		
+		
+		mainPanel.add(createRepeatControls());
+		
+		
+		mainPanel.add(createTrainingButtons());
+		
+		
+		
+		//final String positiveImageName="opencv-pos-images_all.zip";
+		
+		//maybe it's better to use lbp-cropped when export images.
+		
+		loadPositiveZip();
+		loadNegativeZip();
+		
+		
+
+		
+		
+	}
+	
+	private VerticalPanel createRepeatControls() {
+		VerticalPanel mainPanel=new VerticalPanel();
 		final Label statusLabel=new Label("-");
-		root.add(statusLabel);
+		mainPanel.add(statusLabel);
 		
 		HorizontalPanel repeatBts=new HorizontalPanel();
 		repeatBts.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
-		root.add(repeatBts);
+		mainPanel.add(repeatBts);
 		
 		repeatBts.add(new Label("MinHitRate"));
 		final DoubleBox matchRateBox=new DoubleBox();
@@ -622,8 +439,28 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 			
 		repeatBts.add(repeatBt2);
 		
+		return mainPanel;
+	}
+
+	private VerticalPanel createTrainingButtons() {
+		VerticalPanel mainPanel=new VerticalPanel();
+
+		HorizontalPanel negativeRatePanel=new HorizontalPanel();
+		negativeRatePanel.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
+		mainPanel.add(negativeRatePanel);
+		negativeRatePanel.add(new Label("Negative ratio 1 : positive ratio "));
+		/**
+		 * besically this called after load initial-jsons this means at least you train twice same positives
+		 */
+		final ListBox list=new ListBox();
+		for(int i=1;i<=30;i++){
+			list.addItem(String.valueOf(i));
+		}
+		list.setSelectedIndex(1);
+		negativeRatePanel.add(list);
 		
-		ExecuteButton trainPositiveRoot=new ExecuteButton("Train Positive & Negative Last cascade from initial"){
+		
+		ExecuteButton trainingBothButton=new ExecuteButton("Train Positive & Negative Last cascade from initial"){
 
 			@Override
 			public void executeOnClick() {
@@ -636,9 +473,10 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 			
 		};
 			
-		root.add(trainPositiveRoot);
+		mainPanel.add(trainingBothButton);
+
 		
-		ExecuteButton trainPositiveRoot3=new ExecuteButton("Train Positive & Negative Last cascade x 6 differenct"){
+		ExecuteButton trainingBoth6Button=new ExecuteButton("Train Positive & Negative Last cascade x 6 differenct"){
 
 			@Override
 			public void executeOnClick() {
@@ -655,10 +493,10 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 			
 		};
 			
-		root.add(trainPositiveRoot3);
+		mainPanel.add(trainingBoth6Button);
 		
 		
-		ExecuteButton trainPositiveRoot4=new ExecuteButton("Train Positive & Negative Last cascade x 12 differenct"){
+		ExecuteButton trainingBoth12Button=new ExecuteButton("Train Positive & Negative Last cascade x 12 differenct"){
 
 			@Override
 			public void executeOnClick() {
@@ -675,10 +513,10 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 			
 		};
 			
-		root.add(trainPositiveRoot4);
+		mainPanel.add(trainingBoth12Button);
 		
 		
-		ExecuteButton trainPositiveRoot2=new ExecuteButton("Train Positive & Negative Last cascade continue(make differenct positives"){
+		ExecuteButton trainingBothContinueButton=new ExecuteButton("Train Positive & Negative Last cascade continue(make differenct positives"){
 
 			@Override
 			public void executeOnClick() {
@@ -692,119 +530,20 @@ Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 			
 		};
 			
-		root.add(trainPositiveRoot2);
+		mainPanel.add(trainingBothContinueButton);
 		
-		
-		ExecuteButton trainPositive=new ExecuteButton("Train last-cascade Positive Only"){//maybe not useful
-
-			@Override
-			public void executeOnClick() {
-				trainPositiveOnly();
-			}
-			
-		};
-			
-		//root.add(trainPositive);
-		
-		//final String positiveImageName="opencv-pos-images_all.zip";
-		
-		//maybe it's better to use lbp-cropped when export images.
-		
-		final String positiveImageName="posimages.zip";
-		final boolean isCroppedImage=true;
-		//posimages.zip is cropped positive images around 1200-2500
-BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
-	
-			
-
-			@Override
-			public void onLoadBinaryFile(ArrayBuffer buffer) {
-				
-				Stopwatch watch=Stopwatch.createStarted();
-				positivesZip=new CVImageZip(buffer);
-				positivesZip.setName(positiveImageName);
-				
-				checkState(positivesZip.size()>0,"info.txt or info.dat is empty");
-				
-				positivesZip.shuffle();
-				
-				//cropped image need slash edges.
-				if(isCroppedImage){
-				for(CVImageeData data:positivesZip.getDatas()){
-					for(Rect rect:data.getRects()){
-					//	LogUtils.log("before:"+rect.toString());
-						
-						//now stop convert lbp here
-						//rect.expand(-2, -2).copyTo(rect);//because LBP 1 neibors has problem
-						
-						//this already too much lost image info.
-						
-					//	LogUtils.log("after:"+rect.toString());
-					}
-				}
-				}
-				
-				//loadZip();//need this
-				
-				
-				LogUtils.log("posimages load times:"+positivesZip.size()+" items,"+watch.elapsed(TimeUnit.SECONDS)+"s");
-				
-			}
-			
-			@Override
-			public void onFaild(int states, String statesText) {
-				LogUtils.log(states+","+statesText);
-			}
-		});
-
-final String negativeImageName="bg2.zip";//bg2 is face up
-//final String negativeImageName="clipbg.zip";//"nose-inpainted-faces.zip"
-BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
-	
-	
-
-
-
-
-	@Override
-	public void onLoadBinaryFile(ArrayBuffer buffer) {
-		
-		Stopwatch watch=Stopwatch.createStarted();
-	
-		negativesZip=new CVImageZip(buffer);
-		negativesZip.setName(negativeImageName);
-		negativesZip.shuffle();//negative file need shuffle?
-		checkState(negativesZip.size()>0,"some how empty zip or index/bg");
-		
-		LogUtils.log("load negatives datas items="+negativesZip.size()+",time="+watch.elapsed(TimeUnit.SECONDS)+"s");
+		return mainPanel;
 		
 	}
-	
-	@Override
-	public void onFaild(int states, String statesText) {
-		LogUtils.log(states+","+statesText);
-	}
-});
-		
-		
-		
-		
 
-		
-		
-		/*
-		result.setSize("100%", "100%");
-		ScrollPanel scroll=new ScrollPanel(result);
-		scroll.setSize("800px", "400px");
-		root.add(scroll);
-		*/
-		
-		result.add(new Label("success-positive"));
+	private VerticalPanel createBottomPanel(){
+		final VerticalPanel bottomPanel=new VerticalPanel();
+		bottomPanel.add(new Label("success-positive"));
 		successPosPanel = new HorizontalPanel();
-		result.add(successPosPanel);
+		bottomPanel.add(successPosPanel);
 		
 		HorizontalPanel fpPanel=new HorizontalPanel();fpPanel.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
-		result.add(fpPanel);
+		bottomPanel.add(fpPanel);
 		fpPanel.add(new Label("Faild-positive"));
 		ExecuteButton retrainFaildPos=new ExecuteButton("Retrain") {
 			@Override
@@ -816,28 +555,21 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		fpPanel.add(retrainFaildPos);
 		
 		faildPosPanel = new HorizontalPanel();
-		result.add(faildPosPanel);
+		bottomPanel.add(faildPosPanel);
 		
-		result.add(new Label("success-negative"));
+		bottomPanel.add(new Label("success-negative"));
 		successNegativesPanel = new HorizontalPanel();
-		result.add(successNegativesPanel);
-		result.add(new Label("Faild-Negative"));
+		bottomPanel.add(successNegativesPanel);
+		bottomPanel.add(new Label("Faild-Negative"));
 		faildNegativePanel = new HorizontalPanel();
-		result.add(faildNegativePanel);
-		
-		/*
-		FileUploadForm cifar10Upload=FileUtils.createSingleFileUploadForm(new DataArrayListener() {
-			
-			@Override
-			public void uploaded(File file, Uint8Array array) {
-				
-			}
-		}, true, false);
-		
-		root.add(cifar10Upload);
-		*/
-		
-		Button test=new Button("Test",new ClickHandler() {
+		bottomPanel.add(faildNegativePanel);
+		return bottomPanel;
+	}
+	
+	private HorizontalPanel cerateTestButtons() {
+		HorizontalPanel panel=new HorizontalPanel();
+
+Button test=new Button("Test",new ClickHandler() {
 			
 			@Override
 			public void onClick(ClickEvent event) {
@@ -866,7 +598,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 				
 			}
 		});
-		result.add(test);
+		panel.add(test);
 		
 		Button test2=new Button("Test2",new ClickHandler() {
 			Net testNet=ConvnetJs.createRawDepathNet(1, 1, 2, 4, 2);
@@ -989,9 +721,167 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 				*/
 			}
 		});
-		result.add(test2);
+		panel.add(test2);
+		return panel;
+	}
+
+	private void loadNegativeZip() {
+		final String negativeImageName="neg_eye_clip.zip";//bg2 is face up
+//final String negativeImageName="bg2.zip";//bg2 is face up
+//final String negativeImageName="clipbg.zip";//"nose-inpainted-faces.zip"
+BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
+	
+	
+
+
+
+
+	@Override
+	public void onLoadBinaryFile(ArrayBuffer buffer) {
+		
+		Stopwatch watch=Stopwatch.createStarted();
+	
+		negativesZip=new CVImageZip(buffer);
+		negativesZip.setUseCache(true);
+		negativesZip.setName(negativeImageName);
+		negativesZip.shuffle();//negative file need shuffle?
+		checkState(negativesZip.size()>0,"some how empty zip or index/bg");
+		
+		LogUtils.log("load negatives datas items="+negativesZip.size()+",time="+watch.elapsed(TimeUnit.SECONDS)+"s");
+		
 	}
 	
+	@Override
+	public void onFaild(int states, String statesText) {
+		LogUtils.log(states+","+statesText);
+	}
+});
+		
+	}
+
+	private void loadPositiveZip() {
+		final String positiveImageName="pos_eye_all.zip";
+		//final String positiveImageName="posimages.zip";
+		final boolean isCroppedImage=true;
+		//posimages.zip is cropped positive images around 1200-2500
+BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
+	
+			
+
+			@Override
+			public void onLoadBinaryFile(ArrayBuffer buffer) {
+				
+				Stopwatch watch=Stopwatch.createStarted();
+				positivesZip=new CVImageZip(buffer);
+				positivesZip.setName(positiveImageName);
+				
+				checkState(positivesZip.size()>0,"info.txt or info.dat is empty");
+				
+				positivesZip.shuffle();
+				
+				//cropped image need slash edges.
+				if(isCroppedImage){
+				for(CVImageeData data:positivesZip.getDatas()){
+					for(Rect rect:data.getRects()){
+					//	LogUtils.log("before:"+rect.toString());
+						
+						//now stop convert lbp here
+						//rect.expand(-2, -2).copyTo(rect);//because LBP 1 neibors has problem
+						
+						//this already too much lost image info.
+						
+					//	LogUtils.log("after:"+rect.toString());
+					}
+				}
+				}
+				
+				//loadZip();//need this
+				
+				
+				LogUtils.log("posimages load times:"+positivesZip.size()+" items,"+watch.elapsed(TimeUnit.SECONDS)+"s");
+				
+			}
+			
+			@Override
+			public void onFaild(int states, String statesText) {
+				LogUtils.log(states+","+statesText);
+			}
+		});
+	}
+
+	private void createMinRateBox() {
+
+		List<Double> doubles=Lists.newArrayList();
+		for(double i=750;i>=250;i-=25){
+			doubles.add(i/1000);
+		}
+		minRateBox = new ValueListBox<Double>(new  Renderer<Double>() {
+
+			@Override
+			public String render(Double object) {
+				String v=object.toString();
+				return v.substring(0,Math.min(v.length(), 4));
+			}
+
+			@Override
+			public void render(Double object, Appendable appendable) throws IOException {
+				// TODO Auto-generated method stub
+				
+			}
+		});
+		
+		minRateBox.setValue(0.5);
+		minRateBox.setAcceptableValues(doubles);
+		
+	}
+
+	private void loadInitialJson() {
+		try {
+			new RequestBuilder(RequestBuilder.GET,"first-cascade.json").sendRequest(null, new RequestCallback() {
+				
+				@Override
+				public void onResponseReceived(Request request, Response response) {
+					cascades.clear();//maybe no need;
+					//same upload net;
+					Net net=Net.fromJsonString(response.getText());
+					Trainer trainer = ConvnetJs.createTrainer(net,1);//need recreate
+					
+					cascades.add(new CascadeNet(null, net,trainer));//root
+					
+				}
+				
+				@Override
+				public void onError(Request request, Throwable exception) {
+					LogUtils.log(exception.getMessage());
+				}
+			});
+		} catch (RequestException e) {
+			LogUtils.log(e.getMessage());
+			e.printStackTrace();
+		}
+	}
+
+	protected void addNewCascade() {
+		//handle min-rate first
+		double minRate=minRateBox.getValue();
+		minrateValues.add(minRate);
+		
+		getLastCascade().setMinRate(minRate);
+		
+		minRateBox.setValue(0.5);
+		
+		
+		CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),createNewNet(),null);
+		cascades.add(next);
+		
+		passedVols.clear();
+		//trainPositiveOnly();
+		droppedList.addAll(temporalyIgnoreList);
+		temporalyIgnoreList.clear();
+		
+		
+	}
+
 	public  static  final native Vol testb(double[] values) /*-{
 	var vol=new $wnd.convnetjs.Vol(1,1,values.length,0);
 	
@@ -1776,6 +1666,8 @@ protected void doRepeat(boolean initial) {
 	}
 	boolean autoRepeatCancel;
 	
+	/**@deprecated*/
+	
 	private void startTraining(int trained){
 		LogUtils.log("start-training");
 		Stopwatch stopWatch=Stopwatch.createStarted();
@@ -2229,7 +2121,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 				}
 				Vol vol=optionalR.get();
 				passedVols.add(new PassedData(vol,lastDataUrl));
-				dummyCascade.getTrainer().train(vol, 1);//dummy train.maybe generate inner.
+				dummyCascadeForKeepNegativeTrained.getTrainer().train(vol, 1);//dummy train.maybe generate inner.
 			}
 			LogUtils.log("generate-parent-filter passed vol:"+ stopWatch2.elapsed(TimeUnit.SECONDS)+"s");
 			stopWatch.start();
@@ -2353,7 +2245,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	private Canvas resizedCanvas=CanvasUtils.createCanvas(netWidth+edgeSize, netHeight+edgeSize);//fixed size //can i change?
 	
 	private HorizontalPanel successPosPanel;
-	private ExecuteButton analyzeBt;
+	//private ExecuteButton analyzeBt;
 	private FileUploadForm netUploadBt;
 	
 	private String lastDataUrl;
