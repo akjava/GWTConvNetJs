@@ -726,7 +726,8 @@ Button test=new Button("Test",new ClickHandler() {
 	}
 
 	private void loadNegativeZip() {
-		final String negativeImageName="neg_eye_clip.zip";//bg2 is face up
+		final String negativeImageName="neg_eye_paint_face.zip";//bg2 is face up
+		//final String negativeImageName="neg_eye_clip.zip";//bg2 is face up
 //final String negativeImageName="bg2.zip";//bg2 is face up
 //final String negativeImageName="clipbg.zip";//"nose-inpainted-faces.zip"
 BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
@@ -747,7 +748,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		negativesZip.shuffle();//negative file need shuffle?
 		checkState(negativesZip.size()>0,"some how empty zip or index/bg");
 		
-		LogUtils.log("load negatives datas items="+negativesZip.size()+",time="+watch.elapsed(TimeUnit.SECONDS)+"s");
+		LogUtils.log("load negatives from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
 		
 	}
 	
@@ -760,7 +761,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	}
 
 	private void loadPositiveZip() {
-		final String positiveImageName="pos_eye_all.zip";
+		final String positiveImageName="pos_eye_clip.zip";
 		//final String positiveImageName="posimages.zip";
 		final boolean isCroppedImage=true;
 		//posimages.zip is cropped positive images around 1200-2500
@@ -798,7 +799,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 				//loadZip();//need this
 				
 				
-				LogUtils.log("posimages load times:"+positivesZip.size()+" items,"+watch.elapsed(TimeUnit.SECONDS)+"s");
+				LogUtils.log("posimages from "+positivesZip.getName()+" lines="+positivesZip.size()+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
 				
 			}
 			
@@ -992,6 +993,8 @@ protected void doRepeat(boolean initial) {
 			offsetRect=continuRect.get(offsetRectContinueIndex);
 		}
 		
+		Stopwatch watch2=Stopwatch.createStarted();
+		
 		Rect changedRect=new Rect();
 		for(CVImageeData pdata:positivesZip.getDatas()){
 			
@@ -1027,8 +1030,9 @@ protected void doRepeat(boolean initial) {
 				trained++;
 				trainedPositiveDatas.add(new PassedData(vol, path));//re-use when test
 				lastLeaningList.add(new PassedData(vol, path));
-				if(trained%100==0){//need progress
-					LogUtils.log("trained-positive:"+trained);
+				if(trained%500==0){//need progress
+					LogUtils.log("trained-positive:"+trained+" time="+watch2.elapsed(TimeUnit.SECONDS));
+					watch2.reset();watch2.start();
 				}
 			
 				int m=trained%rate;
@@ -1062,7 +1066,12 @@ protected void doRepeat(boolean initial) {
 				
 				getLastCascade().getTrainer().train(neg, negIndex);
 				lastLeaningList.add(new PassedData(neg, negIndex));
+				negative++;
 				
+				//if(negative%500==0){//need progress
+				//	LogUtils.log("trained-negative:"+negative+" time="+watch2.elapsed(TimeUnit.SECONDS));
+				//	watch2.reset();watch2.start();
+				//}
 					
 				}
 				
@@ -2255,6 +2264,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	private Map<String,List<Rect>> rectsMap=new HashMap<String, List<Rect>>();
 	
 	public Optional<Vol> createRandomVol(){
+		Stopwatch watch=Stopwatch.createStarted();
 		for(int j=0;j<20;j++){
 		int index=getRandom(0, negativesZip.size());
 		CVImageeData pdata=negativesZip.get(index);
@@ -2268,9 +2278,13 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			continue;
 		}
 		
-		ImageElement testImage=optional.get();
+		ImageElement negativeImage=optional.get();
+		//LogUtils.log("load-image:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+		watch.reset();watch.start();
 		
-		List<Rect> rects=loadRect(testImage,pdata.getFileName());
+		List<Rect> rects=loadRect(negativeImage,pdata.getFileName());
+		//LogUtils.log("generate-rect:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+		watch.reset();watch.start();
 		/*
 		int width=testImage.getWidth();
 		int height=testImage.getHeight();
@@ -2295,11 +2309,13 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			//LogUtils.log(r);
 			
 			//LogUtils.log("train:"+data.getFileName()+","+r.toString());
-			RectCanvasUtils.crop(testImage, r, sharedCanvas);
+			RectCanvasUtils.crop(negativeImage, r, sharedCanvas);
 			CanvasUtils.clear(resizedCanvas);
 			resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
 			Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 			lastDataUrl=resizedCanvas.toDataUrl();
+			//LogUtils.log("generate-image:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+			watch.reset();watch.start();
 			//LogUtils.log("randomVol:"+pdata.getFileName()+":"+r.toKanmaString());
 			return Optional.of(vol);
 		
@@ -2439,7 +2455,8 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	private List<Rect> loadRect(ImageElement image, String fileName) {
 		List<Rect> rects=rectsMap.get(fileName);
 		if(rects==null){
-			rects=generateRect(image, 2, 1.2);
+			rects=generateRect(image, 6, 1.6);
+			//rects=generateRect(image, 2, 1.2);//this is too much make rects
 			rectsMap.put(fileName, ListUtils.shuffle(rects));
 		}
 		return rects;
