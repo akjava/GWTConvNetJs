@@ -30,15 +30,17 @@ import com.akjava.gwt.lib.client.experimental.ExecuteButton;
 import com.akjava.gwt.lib.client.experimental.RectCanvasUtils;
 import com.akjava.gwt.lib.client.experimental.lbp.ByteImageDataIntConverter;
 import com.akjava.gwt.lib.client.experimental.lbp.SimpleLBP;
-import com.akjava.gwt.lib.client.experimental.opencv.CVImageeData;
+import com.akjava.gwt.lib.client.experimental.opencv.CVImageData;
 import com.akjava.gwt.lib.client.widget.PanelUtils;
 import com.akjava.lib.common.graphics.Rect;
 import com.akjava.lib.common.io.FileType;
 import com.akjava.lib.common.utils.FileNames;
 import com.akjava.lib.common.utils.ListUtils;
+import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Optional;
 import com.google.common.base.Stopwatch;
+import com.google.common.collect.FluentIterable;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.google.common.primitives.Doubles;
@@ -475,6 +477,11 @@ public class GWTConvNetJs implements EntryPoint {
 			
 		mainPanel.add(trainingBothButton);
 
+		HorizontalPanel variationLevelPanel=new HorizontalPanel();
+		mainPanel.add(variationLevelPanel);
+		variationLevelPanel.add(new Label("variationLevel:"));
+		variationLevelLabel = new Label("0");
+		variationLevelPanel.add(variationLevelLabel);
 		
 		ExecuteButton trainingBoth6Button=new ExecuteButton("Train Positive & Negative Last cascade x 6 differenct"){
 
@@ -484,11 +491,14 @@ public class GWTConvNetJs implements EntryPoint {
 				
 				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
 				doTrain(v,true);//offsetRectContinueIndex initialized here
+				updateVariationLevelLabel();
+				
 				for(int i=0;i<6;i++){
 				doTrain(v,false);
 				}
 				doTestLastPositiveTrainedAll();
 				offsetRectContinueIndex++;
+				updateVariationLevelLabel();
 			}
 			
 		};
@@ -504,11 +514,14 @@ public class GWTConvNetJs implements EntryPoint {
 				
 				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
 				doTrain(v,true);//offsetRectContinueIndex initialized here
+				updateVariationLevelLabel();
+				
 				for(int i=0;i<12;i++){//maybe 12 is max
 				doTrain(v,false);
 				}
 				doTestLastPositiveTrainedAll();
 				offsetRectContinueIndex++;
+				updateVariationLevelLabel();
 			}
 			
 		};
@@ -526,6 +539,7 @@ public class GWTConvNetJs implements EntryPoint {
 				doTrain(v,false);
 				doTestLastPositiveTrainedAll();
 				offsetRectContinueIndex++;
+				updateVariationLevelLabel();
 			}
 			
 		};
@@ -534,6 +548,10 @@ public class GWTConvNetJs implements EntryPoint {
 		
 		return mainPanel;
 		
+	}
+
+	protected void updateVariationLevelLabel() {
+		variationLevelLabel.setText(String.valueOf(offsetRectContinueIndex));
 	}
 
 	private VerticalPanel createBottomPanel(){
@@ -761,7 +779,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	}
 
 	private void loadPositiveZip() {
-		final String positiveImageName="pos_eye_clip.zip";
+		final String positiveImageName="pos_eye_front_clip.zip";
 		//final String positiveImageName="posimages.zip";
 		final boolean isCroppedImage=true;
 		//posimages.zip is cropped positive images around 1200-2500
@@ -782,7 +800,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 				
 				//cropped image need slash edges.
 				if(isCroppedImage){
-				for(CVImageeData data:positivesZip.getDatas()){
+				for(CVImageData data:positivesZip.getDatas()){
 					for(Rect rect:data.getRects()){
 					//	LogUtils.log("before:"+rect.toString());
 						
@@ -797,7 +815,27 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 				}
 				
 				//loadZip();//need this
+				List<Rect> rects=Lists.newArrayList();
+				//calculare ratio
+				for(CVImageData data:positivesZip.getDatas()){
+					for(Rect rect:data.getRects()){
+						rects.add(rect);
+					}
+				}
 				
+				List<Double> ratios=Lists.newArrayList(FluentIterable.from(rects).transform(new Function<Rect, Double>() {
+
+					@Override
+					public Double apply(Rect input) {
+						
+						return (double)input.getWidth()/input.getHeight();
+					}
+				}));
+				
+				double average=Statics.average(ratios);
+				double middle=Statics.middle(ratios);
+				
+				LogUtils.log("Ratio:average="+average+",middle="+middle);
 				
 				LogUtils.log("posimages from "+positivesZip.getName()+" lines="+positivesZip.size()+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
 				
@@ -903,7 +941,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 		
 		//create positive 2 negatives
 		int depth=8*lbpDataSplit*lbpDataSplit;
-		int neutron=8;
+		int neutron=8*3;
 		int classes=5; //1pos and 4 neg(lbp details)
 		return ConvnetJs.createRawDepathNet2(1,1,depth,neutron , classes);//*lbpDataSplit*lbpDataSplit
 		//return ConvnetJs.createDepathNet(1,1,8*lbpDataSplit*lbpDataSplit, 8*lbpDataSplit*lbpDataSplit*10, 2);
@@ -969,9 +1007,13 @@ protected void doRepeat(boolean initial) {
 	//int negIndex=1;
 	int maxNegIndex=2;
 	protected void doTrain(int rate,boolean initial) {
+		doTrain(rate,initial,false);
+	}
+	protected void doTrain(int rate,boolean initial,boolean horizontal) {
 
-		if(initial)
-		lastLeaningList.clear();
+		if(initial){
+			lastLeaningList.clear();
+			}
 		
 		trainedPositiveDatas.clear();
 		Stopwatch watch=Stopwatch.createStarted();
@@ -990,13 +1032,18 @@ protected void doRepeat(boolean initial) {
 		getLastCascade().setTrainer(trainer);
 		offsetRect=zeroRect;
 		}else{
-			offsetRect=continuRect.get(offsetRectContinueIndex);
+			if(!horizontal){
+				offsetRect=continuRect.get(offsetRectContinueIndex);
+			}else{
+				//right now horizontal only do origin for test
+				offsetRect=zeroRect;
+			}
 		}
 		
 		Stopwatch watch2=Stopwatch.createStarted();
 		
 		Rect changedRect=new Rect();
-		for(CVImageeData pdata:positivesZip.getDatas()){
+		for(CVImageData pdata:positivesZip.getDatas()){
 			
 			Optional<ImageElement> imageElementOptional=positivesZip.getImageElement(pdata);
 			
@@ -1023,8 +1070,16 @@ protected void doRepeat(boolean initial) {
 				
 				RectCanvasUtils.crop(baseImage, rect, sharedCanvas);
 				CanvasUtils.clear(resizedCanvas);
+				
 			
-				resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
+				if(horizontal){
+					CanvasUtils.copyToFlipHorizontal(sharedCanvas, resizedCanvas);
+				}else{
+					CanvasUtils.copyTo(sharedCanvas, resizedCanvas);
+				}
+				
+				//resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
+				
 				Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 				getLastCascade().getTrainer().train(vol, 0);
 				trained++;
@@ -1208,7 +1263,7 @@ protected void doRepeat(boolean initial) {
 		getLastCascade().setNet(net);
 		getLastCascade().setTrainer(trainer);
 		
-		for(CVImageeData pdata:positivesZip.getDatas()){
+		for(CVImageData pdata:positivesZip.getDatas()){
 			
 			Optional<ImageElement> imageElementOptional=positivesZip.getImageElement(pdata);
 			
@@ -1280,8 +1335,8 @@ protected void doRepeat(boolean initial) {
 		}
 		mutchRect.clear();
 		successPosPanel.clear();
-		int minW=26;//TODO change based clip
-		int minH=24;
+		int minW=24;//TODO change based clip
+		int minH=14;
 		double min_scale=1.6;//no need really small pixel
 		Canvas grayscaleCanvasForDetector=Canvas.createIfSupported();
 		
@@ -1513,7 +1568,7 @@ protected void doRepeat(boolean initial) {
 		Stopwatch watch=Stopwatch.createStarted();
 	int trained=0;
 	LogUtils.log("start last cascades:"+cascades.size()+" size="+ positivesZip.size());
-	for(CVImageeData pdata:positivesZip.getDatas()){
+	for(CVImageData pdata:positivesZip.getDatas()){
 		
 		Optional<ImageElement> imageElementOptional=positivesZip.getImageElement(pdata);
 		
@@ -1594,7 +1649,7 @@ protected void doRepeat(boolean initial) {
 		int w=24;
 		int h=24;
 		ImageElement baseImage=null;
-		CVImageeData data=null;
+		CVImageData data=null;
 		int dummy=0;
 		int tryingSameImage=0;
 		while(negatives<trained){
@@ -1825,7 +1880,7 @@ protected void doRepeat(boolean initial) {
 		for(int i=0;i<positivesZip.size();i++){
 			
 			
-			CVImageeData pdata=positivesZip.get(i);
+			CVImageData pdata=positivesZip.get(i);
 			
 			Optional<ImageElement> imageElementOptional=positivesZip.getImageElement(pdata);
 			
@@ -1891,7 +1946,7 @@ protected void doRepeat(boolean initial) {
 			if(i>=positivesZip.size()){
 				break;
 			}
-			CVImageeData pdata=positivesZip.get(i);
+			CVImageData pdata=positivesZip.get(i);
 			
 			Optional<ImageElement> imageElementOptional=positivesZip.getImageElement(pdata);
 			
@@ -2082,7 +2137,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		double minPositiveRate=minRateBox.getValue();
 		if(testPositives){
 		for(int i=0;i<testNumber;i++){
-			CVImageeData pdata=positivesZip.get(i);
+			CVImageData pdata=positivesZip.get(i);
 			Optional<ImageElement> imageElementOptional=positivesZip.getImageElement(pdata);
 			
 			if(!imageElementOptional.isPresent()){
@@ -2181,7 +2236,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		int testNumber=100;
 		for(int i=0;i<testNumber;i++){
 			
-			CVImageeData pdata=positivesZip.get(i);
+			CVImageData pdata=positivesZip.get(i);
 			
 			Optional<ImageElement> imageElementOptional=positivesZip.getImageElement(pdata);
 			
@@ -2267,7 +2322,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		Stopwatch watch=Stopwatch.createStarted();
 		for(int j=0;j<20;j++){
 		int index=getRandom(0, negativesZip.size());
-		CVImageeData pdata=negativesZip.get(index);
+		CVImageData pdata=negativesZip.get(index);
 		//String extension=FileNames.getExtension(pdata.getFileName());
 		//FileType type=FileType.getFileTypeByExtension(extension);//need to know jpeg or png
 		//byte[] bt=imgFile.asUint8Array().toByteArray();
@@ -2326,6 +2381,8 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	boolean isAllImageGrayscale=true;
 
 	private ValueListBox<Double> minRateBox;
+
+	private Label variationLevelLabel;
 	private Vol createVolFromImageData(ImageData imageData){
 		//return createGrayscaleImageVolFromImageData(imageData);
 		return createLBPDepthVolFromImageData(imageData);
@@ -2465,7 +2522,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	public Vol createRandomVolFromPositiveStyle(){
 		for(int j=0;j<10;j++){
 		int index=getRandom(0, positivesZip.size());
-		CVImageeData pdata=positivesZip.get(index);
+		CVImageData pdata=positivesZip.get(index);
 		
 		
 		

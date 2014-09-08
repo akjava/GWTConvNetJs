@@ -6,13 +6,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.akjava.gwt.html5.client.file.Uint8Array;
 import com.akjava.gwt.jszip.client.JSFile;
 import com.akjava.gwt.jszip.client.JSZip;
 import com.akjava.gwt.lib.client.Base64Utils;
 import com.akjava.gwt.lib.client.ImageElementUtils;
 import com.akjava.gwt.lib.client.LogUtils;
 import com.akjava.gwt.lib.client.experimental.opencv.CVImageDataConverter;
-import com.akjava.gwt.lib.client.experimental.opencv.CVImageeData;
+import com.akjava.gwt.lib.client.experimental.opencv.CVImageData;
 import com.akjava.lib.common.io.FileType;
 import com.akjava.lib.common.utils.CSVUtils;
 import com.akjava.lib.common.utils.FileNames;
@@ -29,7 +30,7 @@ public static final int POSITIVES=0;
 public static final int NEGATIVES=1;
 public static final int IMAGES=2;
 public int type;
-private Map<String,ImageElement> cachedImageElement=new HashMap<String, ImageElement>();
+private Map<String,StringBuffer> cachedImageElement=new HashMap<String, StringBuffer>();
 private boolean useCache=true;//default true
 private JSZip zip;
 private String name="";
@@ -53,20 +54,23 @@ public int getType() {
 	return type;
 }
 
-public List<CVImageeData> getDatas() {
+public List<CVImageData> getDatas() {
 	return datas;
 }
 
-private List<CVImageeData> datas=Lists.newArrayList();
+private List<CVImageData> datas=Lists.newArrayList();
 	public boolean isUseCache() {
 	return useCache;
 }
 
-public Optional<ImageElement> getImageElement(CVImageeData data){
+public Optional<ImageElement> getImageElement(CVImageData data){
 	ImageElement image=null;
 	
 	if(useCache){//use cache really consume browser memory.take care
-	image=cachedImageElement.get(data.getFileName());
+		StringBuffer url=cachedImageElement.get(data.getFileName());
+	if(url!=null){
+		image=ImageElementUtils.create(url.toString());
+		}
 	}
 	if(image==null){//use cache for reduce extract time,here is bottleneck but burst memory
 		JSFile imgFile=zip.getFile(data.getFileName());
@@ -78,21 +82,22 @@ public Optional<ImageElement> getImageElement(CVImageeData data){
 		String extension=FileNames.getExtension(data.getFileName());
 		FileType type=FileType.getFileTypeByExtension(extension);//need to know jpeg or png
 		String dataUrl=Base64Utils.toDataUrl(type.getMimeType(),imgFile.asUint8Array().toByteArray());//should use cache 300MB etc
+		dataUrl=doFilter(dataUrl);
 		image=ImageElementUtils.create(dataUrl);
 		
-		image=doFilter(image);
+		
 		
 		if(useCache){
-			cachedImageElement.put(data.getFileName(), image);
+			cachedImageElement.put(data.getFileName(), new StringBuffer(dataUrl));
 		}
 	}
 	return Optional.of(image);
 }
 	
-//for future use
-protected ImageElement doFilter(ImageElement image) {
+//for future use,change dataUrl base,now store dataUrl on cache to reduce memory usage
+protected String doFilter(String dataUrl) {
 	
-	return image;
+	return dataUrl;
 }
 
 public void setUseCache(boolean useCache) {
@@ -101,12 +106,14 @@ public void setUseCache(boolean useCache) {
 
 public CVImageZip(ArrayBuffer buffer){
 	this(JSZip.loadFromArrayBuffer(buffer));
-	
+}
+public CVImageZip(Uint8Array buffer){
+	this(JSZip.loadFromArray(buffer));
 }
 public int size(){
 	return datas.size();
 }
-public CVImageeData get(int index){
+public CVImageData get(int index){
 	return datas.get(index);
 }
 
