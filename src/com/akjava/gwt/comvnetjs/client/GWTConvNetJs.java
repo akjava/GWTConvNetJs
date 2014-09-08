@@ -779,7 +779,8 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	}
 
 	private void loadPositiveZip() {
-		final String positiveImageName="pos_eye_front_clip.zip";
+		final String positiveImageName="pos_eye_closed_clip.zip";//for test
+		//final String positiveImageName="pos_eye_front_clip.zip";
 		//final String positiveImageName="posimages.zip";
 		final boolean isCroppedImage=true;
 		//posimages.zip is cropped positive images around 1200-2500
@@ -2392,7 +2393,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	}
 	private Vol createLBPDepthVolFromImageData(ImageData imageData){
 		if(imageData.getWidth()!=netWidth+edgeSize || imageData.getHeight()!=netHeight+edgeSize){ //somehow still 26x26 don't care!
-			Window.alert("invalid size:"+imageData.getWidth()+","+imageData.getHeight());
+			Window.alert("invalid size:"+imageData.getWidth()+","+imageData.getHeight()+" expected "+(netWidth+edgeSize)+"x"+(netHeight+edgeSize));
 			return null;
 		}
 		
