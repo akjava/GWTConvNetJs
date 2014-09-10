@@ -11,8 +11,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-import javax.management.RuntimeErrorException;
-
+import com.akjava.gwt.comvnetjs.client.StageControler.LearningInfo;
+import com.akjava.gwt.comvnetjs.client.StageControler.PhaseData;
+import com.akjava.gwt.comvnetjs.client.StageControler.Score;
+import com.akjava.gwt.comvnetjs.client.StageControler.ScoreGroup;
+import com.akjava.gwt.comvnetjs.client.StageControler.StageResult;
 import com.akjava.gwt.html5.client.download.HTML5Download;
 import com.akjava.gwt.html5.client.file.File;
 import com.akjava.gwt.html5.client.file.FileUploadForm;
@@ -32,6 +35,8 @@ import com.akjava.gwt.lib.client.experimental.lbp.ByteImageDataIntConverter;
 import com.akjava.gwt.lib.client.experimental.lbp.SimpleLBP;
 import com.akjava.gwt.lib.client.experimental.opencv.CVImageData;
 import com.akjava.gwt.lib.client.widget.PanelUtils;
+import com.akjava.gwt.lib.client.widget.cell.EasyCellTableObjects;
+import com.akjava.gwt.lib.client.widget.cell.SimpleCellTable;
 import com.akjava.lib.common.graphics.Rect;
 import com.akjava.lib.common.io.FileType;
 import com.akjava.lib.common.utils.FileNames;
@@ -47,8 +52,14 @@ import com.google.common.primitives.Doubles;
 import com.google.gwt.canvas.client.Canvas;
 import com.google.gwt.canvas.dom.client.ImageData;
 import com.google.gwt.core.client.EntryPoint;
+import com.google.gwt.core.client.GWT;
 import com.google.gwt.dom.client.ImageElement;
 import com.google.gwt.dom.client.Style.Unit;
+import com.google.gwt.editor.client.Editor;
+import com.google.gwt.editor.client.EditorDelegate;
+import com.google.gwt.editor.client.SimpleBeanEditorDriver;
+import com.google.gwt.editor.client.ValueAwareEditor;
+import com.google.gwt.editor.client.adapters.SimpleEditor;
 import com.google.gwt.event.dom.client.ClickEvent;
 import com.google.gwt.event.dom.client.ClickHandler;
 import com.google.gwt.http.client.Request;
@@ -56,6 +67,7 @@ import com.google.gwt.http.client.RequestBuilder;
 import com.google.gwt.http.client.RequestCallback;
 import com.google.gwt.http.client.RequestException;
 import com.google.gwt.http.client.Response;
+import com.google.gwt.i18n.client.NumberFormat;
 import com.google.gwt.json.client.JSONArray;
 import com.google.gwt.json.client.JSONNumber;
 import com.google.gwt.json.client.JSONObject;
@@ -64,6 +76,8 @@ import com.google.gwt.json.client.JSONString;
 import com.google.gwt.json.client.JSONValue;
 import com.google.gwt.text.shared.Renderer;
 import com.google.gwt.typedarrays.shared.ArrayBuffer;
+import com.google.gwt.user.cellview.client.CellTable;
+import com.google.gwt.user.cellview.client.TextColumn;
 import com.google.gwt.user.client.Timer;
 import com.google.gwt.user.client.Window;
 import com.google.gwt.user.client.ui.Anchor;
@@ -72,8 +86,10 @@ import com.google.gwt.user.client.ui.DockLayoutPanel;
 import com.google.gwt.user.client.ui.DoubleBox;
 import com.google.gwt.user.client.ui.HorizontalPanel;
 import com.google.gwt.user.client.ui.Image;
+import com.google.gwt.user.client.ui.IntegerBox;
 import com.google.gwt.user.client.ui.Label;
 import com.google.gwt.user.client.ui.ListBox;
+import com.google.gwt.user.client.ui.Panel;
 import com.google.gwt.user.client.ui.RootLayoutPanel;
 import com.google.gwt.user.client.ui.ScrollPanel;
 import com.google.gwt.user.client.ui.ValueListBox;
@@ -113,12 +129,19 @@ public class GWTConvNetJs implements EntryPoint {
 	private String lastJson;
 	
 	private CascadeNet dummyCascadeForKeepNegativeTrained;
+
+	private IntegerBox detectStepSize;
+
+	private DoubleBox detectInitialScale;
+
+	private DoubleBox detectScaleFactor;
 	private void doUndo(){
 		fromJson(lastJson);
 	}
 	
 	private static Canvas lbpCanvas=Canvas.createIfSupported();//
 	
+	private String imageDataUrl;
 	public class LBPImageZip extends CVImageZip{
 		private ByteImageDataIntConverter converter=new ByteImageDataIntConverter(lbpCanvas.getContext2d(),true);
 	
@@ -150,30 +173,76 @@ public class GWTConvNetJs implements EntryPoint {
 				HorizontalPanel topImageControlPanel=new HorizontalPanel();
 				topImageControlPanel.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
 				
+final ExecuteButton detectBt=new ExecuteButton("Detect") {
+					
+					@Override
+					public void executeOnClick() {
+						ImageElementUtils.copytoCanvas(imageDataUrl, imageShowingCanvas);
+						getLastCascade().setMinRate(minRateBox.getValue());
+						detectImage(imageShowingCanvas,detectStepSize.getValue(),detectScaleFactor.getValue());
+					}
+				};
+				detectBt.setEnabled(false);
+				
 				FileUploadForm imageUpload= FileUtils.createSingleFileUploadForm(new DataURLListener() {
 					
 					@Override
 					public void uploaded(File file, String text) {
+						imageDataUrl=text;
+						//ImageElementUtils.copytoCanvas(text, imageShowingCanvas);
 						
-						ImageElementUtils.copytoCanvas(text, imageShowingCanvas);
-						Timer timer=new Timer(){
-							@Override
-							public void run() {
-								//detectImage(anotherCanvas,8,2.4);//1.2 is default (1-16,1.2 - 3.6)
-								//detectImage(anotherCanvas,4,1.6);
-								getLastCascade().setMinRate(minRateBox.getValue());
-								detectImage(imageShowingCanvas,6,1.8);
-								
-								
-							}};
-						timer.schedule(100);
+						detectBt.setEnabled(true);//this is not smart should i separete?
+						detectBt.startExecute(true);
+						
 						//
 					}
 				}, true);
+				
+				
 				imageUpload.setAccept("image/*");
-				root.add(new Label("detect-canvas"));
+				HorizontalPanel hpanel=new HorizontalPanel();
+				hpanel.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
+				root.add(hpanel);
+				
+				hpanel.add(new Label("Detect-canvas"));
+				hpanel.add(new Label("detect-width:"));
+				detectWidth = new IntegerBox();
+				detectWidth.setValue(24);
+				detectWidth.setWidth("50px");
+				hpanel.add(detectWidth);
+				
+				hpanel.add(new Label("detect-height:"));
+				detectHeight = new IntegerBox();
+				detectHeight.setValue(14);
+				detectHeight.setWidth("50px");
+				hpanel.add(detectHeight);
+				
+				
+				
+				hpanel.add(new Label("step-size:"));
+				detectStepSize = new IntegerBox();
+				detectStepSize.setValue(6);
+				detectStepSize.setWidth("50px");
+				hpanel.add(detectStepSize);
+				
+				hpanel.add(new Label("initial-scale:"));
+				detectInitialScale = new DoubleBox();
+				detectInitialScale.setValue(1.4);
+				detectInitialScale.setWidth("50px");
+				hpanel.add(detectInitialScale);
+				
+				hpanel.add(new Label("scale-factor:"));
+				detectScaleFactor = new DoubleBox();
+				detectScaleFactor.setValue(1.8);
+				detectScaleFactor.setWidth("50px");
+				hpanel.add(detectScaleFactor);
+				
+				
 				root.add(imageShowingCanvas);
 				root.add(topImageControlPanel);
+				
+				
+				topImageControlPanel.add(detectBt);
 				topImageControlPanel.add(new Label("select image(after that detection start automatic) recommend around 250x250.otherwise take too mauch time"));
 				topImageControlPanel.add(imageUpload);
 				return root;
@@ -233,6 +302,8 @@ public class GWTConvNetJs implements EntryPoint {
 		};
 		mainPanel.add(addBt);
 		
+		cascadeLabel = new Label();
+		mainPanel.add(cascadeLabel);
 		
 		mainPanel.add(new Label("load last-saved cascades(sometime compatible problem happen)"));
 		FileUploadForm cascadeUploadBt = FileUtils.createSingleTextFileUploadForm(new DataURLListener() {
@@ -311,9 +382,230 @@ public class GWTConvNetJs implements EntryPoint {
 		
 
 		
+		mainPanel.add(createFullAutoControls());
 		
+		updateCascadeLabel();
 	}
 	
+	 interface Driver extends SimpleBeanEditorDriver< StageResult,  StageResultEditor> {}
+	 Driver stageResultEditorDriver = GWT.create(Driver.class);
+	 
+		public class StageResultEditor extends VerticalPanel implements Editor<StageResult>,ValueAwareEditor<StageResult>{
+			  IntegerBox stageEditor;
+			
+			  IntegerBox consumeSecondEditor;
+			  SimpleEditor<List<PhaseData>> phaseDatasEditor;
+			  SimpleEditor<ScoreGroup> scoreGroupEditor;
+			  SimpleEditor<String> jsonEditor;
+			  SimpleEditor<Score> scoreEditor;
+
+			  
+			private Label scoreLabel;
+
+		
+
+			private CopyJsonButton scoreBt;
+
+			private Label bestMatchScoreLabel;
+
+			private Label bestFalseScoreLabel;
+			public StageResultEditor(){
+				HorizontalPanel top=new HorizontalPanel();
+				top.setVerticalAlignment(ALIGN_MIDDLE);
+				stageEditor=new IntegerBox();
+				stageEditor.setEnabled(false);
+				top.add(new Label("Stage:"));
+				top.add(stageEditor);
+				
+				consumeSecondEditor=new IntegerBox();
+				consumeSecondEditor.setEnabled(false);
+				top.add(new Label("time:"));
+				top.add(consumeSecondEditor);
+				
+				phaseDatasEditor=SimpleEditor.of();
+				scoreGroupEditor=SimpleEditor.of();
+				jsonEditor=SimpleEditor.of();
+				scoreEditor=SimpleEditor.of();
+				
+				HorizontalPanel scorePanel = new HorizontalPanel();
+				scorePanel.setVerticalAlignment(ALIGN_MIDDLE);
+				add(scorePanel);
+				
+				scorePanel.add(new Label("Score:"));
+				scoreLabel = new Label();
+				scorePanel.add(scoreLabel);
+				
+				scoreBt = new CopyJsonButton("copy");
+				scorePanel.add(scoreBt);
+				//other score
+				
+				HorizontalPanel otherScorePanel = new HorizontalPanel();
+				otherScorePanel.setVerticalAlignment(ALIGN_MIDDLE);
+				add(otherScorePanel);
+				
+				otherScorePanel.add(new Label("BestMatch:"));
+				bestMatchScoreLabel = new Label();
+				otherScorePanel.add(bestMatchScoreLabel);
+				//TODO add button
+				
+				otherScorePanel.add(new Label("BestFalse:"));
+				bestFalseScoreLabel = new Label();
+				otherScorePanel.add(bestFalseScoreLabel);
+			}
+
+			@Override
+			public void setDelegate(EditorDelegate<StageResult> delegate) {
+				// TODO Auto-generated method stub
+				
+			}
+
+			@Override
+			public void flush() {
+				// TODO Auto-generated method stub
+				
+			}
+
+			@Override
+			public void onPropertyChange(String... paths) {
+				// TODO Auto-generated method stub
+				
+			}
+
+			@Override
+			public void setValue(StageResult value) {
+				
+				//do by manual
+				scoreLabel.setText(value.getScore().toString());
+				scoreBt.setJson(value.getJson());
+				
+				
+				bestMatchScoreLabel.setText(value.getScoreGroup().getBestMatchRateScore().toString());
+				bestFalseScoreLabel.setText(value.getScoreGroup().getBestFalseRateScore().toString());
+			}
+		}
+		
+		private class CopyJsonButton extends Button{
+			private String json;
+			public String getJson() {
+				return json;
+			}
+			public void setJson(String json) {
+				this.json = json;
+			}
+			public CopyJsonButton(String label){
+				super(label);
+				addClickHandler(new ClickHandler() {
+					
+					@Override
+					public void onClick(ClickEvent event) {
+						doClick();
+					}
+				});
+			}
+			public void doClick(){
+				if(json==null){
+					return;
+				}
+				fromJson(json);	
+			}
+		}
+		
+	NumberFormat numberFormat=NumberFormat.getFormat("0.000");
+	private Panel createFullAutoControls() {
+		final StageResultEditor resultEditor=new StageResultEditor();
+		stageResultEditorDriver.initialize(resultEditor);
+		
+		VerticalPanel panel=new VerticalPanel();
+		HorizontalPanel h=new HorizontalPanel();
+		panel.add(h);
+		SimpleCellTable<StageResult> table=new SimpleCellTable<StageResult>() {
+			@Override
+			public void addColumns(CellTable<StageResult> table) {
+				TextColumn<StageResult> nameColumn=new TextColumn<StageResult>() {
+					@Override
+					public String getValue(StageResult object) {
+						return String.valueOf(object.getStage());
+					}
+				};
+				table.addColumn(nameColumn);
+				
+				TextColumn<StageResult> matchRateColumn=new TextColumn<StageResult>() {
+					@Override
+					public String getValue(StageResult object) {
+						if(object.getScore()==null){
+							return "";
+						}
+						return numberFormat.format(object.getScore().getMatchRate());
+					}
+				};
+				table.addColumn(matchRateColumn,"MatchRate");
+				
+				TextColumn<StageResult> falseRateColumn=new TextColumn<StageResult>() {
+					@Override
+					public String getValue(StageResult object) {
+						if(object.getScore()==null){
+							return "";
+						}
+						return numberFormat.format(object.getScore().getFalseRate());
+					}
+				};
+				table.addColumn(falseRateColumn,"FalseRate");
+				
+				TextColumn<StageResult> ratioColumn=new TextColumn<StageResult>() {
+					@Override
+					public String getValue(StageResult object) {
+						if(object.getPhaseDatas()==null || object.getPhaseDatas().size()==0){
+							return "";
+						}
+						PhaseData phase=object.getPhaseDatas().get(object.getPhaseDatas().size()-1);
+						return String.valueOf(phase.getPhaseInfo().getPositiveRatio());
+					}
+				};
+				table.addColumn(ratioColumn,"FinalRatio");
+				
+				TextColumn<StageResult> variationColumn=new TextColumn<StageResult>() {
+					@Override
+					public String getValue(StageResult object) {
+						if(object.getPhaseDatas()==null || object.getPhaseDatas().size()==0){
+							return "";
+						}
+						PhaseData phase=object.getPhaseDatas().get(object.getPhaseDatas().size()-1);
+						return String.valueOf(phase.getPhaseInfo().getVariationSize());
+					}
+				};
+				table.addColumn(variationColumn,"FinalVariation");
+				
+				TextColumn<StageResult> learningColumn=new TextColumn<StageResult>() {
+					@Override
+					public String getValue(StageResult object) {
+						if(object.getPhaseDatas()==null || object.getPhaseDatas().size()==0){
+							return "";
+						}
+						PhaseData phase=object.getPhaseDatas().get(object.getPhaseDatas().size()-1);
+						return String.valueOf(phase.getLearningCount());
+					}
+				};
+				table.addColumn(learningColumn,"FinalLearning");
+			}
+		};
+		
+		
+		
+		stageResultObjects = new EasyCellTableObjects<StageResult>(table){
+			@Override
+			public void onSelect(StageResult selection) {
+				resultEditor.setVisible(selection!=null);
+				if(selection!=null){
+					stageResultEditorDriver.edit(selection);
+				}
+			}};
+		h.add(table);
+		
+		panel.add(resultEditor);
+		
+		return panel;
+	}
+
 	private VerticalPanel createRepeatControls() {
 		VerticalPanel mainPanel=new VerticalPanel();
 		final Label statusLabel=new Label("-");
@@ -474,8 +766,22 @@ public class GWTConvNetJs implements EntryPoint {
 			}
 			
 		};
-			
 		mainPanel.add(trainingBothButton);
+		
+		ExecuteButton trainingBothHorizontalButton=new ExecuteButton("Train Positive & Negative Last cascade with Horizontal"){
+
+			@Override
+			public void executeOnClick() {
+				getLastCascade().setMinRate(minRateBox.getValue());
+				
+				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
+				doTrain(v,false,true);
+				doTestLastPositiveTrainedAll();
+			}
+			
+		};
+			
+		mainPanel.add(trainingBothHorizontalButton);
 
 		HorizontalPanel variationLevelPanel=new HorizontalPanel();
 		mainPanel.add(variationLevelPanel);
@@ -588,35 +894,35 @@ public class GWTConvNetJs implements EntryPoint {
 		HorizontalPanel panel=new HorizontalPanel();
 
 Button test=new Button("Test",new ClickHandler() {
-			
+	
 			@Override
 			public void onClick(ClickEvent event) {
+				doTest1();
 				
+				
+				/*
+				//calculate time
 				for(int i=0;i<10;i++){
 					Vol v=createRandomVol().get();
 					Vol result=getLastCascadesNet().forward(v);
 					LogUtils.log(result.getW(0)+","+result.getW(1));
 					
 				}
-				/*
-				for(int i=0;i<negativesZip.size();i++){
-				CVImageeData pdata=negativesZip.getDatas().get(i);
-				
-				Optional<ImageElement> negativeImage=negativesZip.getImageElement(pdata);
-				if(!negativeImage.isPresent()){
-					LogUtils.log("accidently image not contain:"+pdata.getFileName());
-					continue;
-				}
-				
-				ImageElement testImage=negativeImage.get();
-				LogUtils.log(testImage.getWidth()+"x"+testImage.getHeight());
-				generateRect(testImage, 1, 1.2);
-				}
 				*/
 				
 			}
 		});
 		panel.add(test);
+		
+		Button test1Cancel=new Button("Test1 Cancel",new ClickHandler() {
+			
+			@Override
+			public void onClick(ClickEvent event) {
+				stageControler.setCanceled(true);
+				stageResultObjects.update();//for manual update
+			}
+		});
+		panel.add(test1Cancel);
 		
 		Button test2=new Button("Test2",new ClickHandler() {
 			Net testNet=ConvnetJs.createRawDepathNet(1, 1, 2, 4, 2);
@@ -697,50 +1003,128 @@ Button test=new Button("Test",new ClickHandler() {
 				LogUtils.log("fine:"+fine+",trained="+trained);
 				//LogUtils.log(testb(new double[]{0.1,0.2}));
 				
-				/*
-				Net net=ConvnetJs.createDepathNet(1, 1, 3, 300, 2);
-				
-				Trainer trainer=ConvnetJs.createTrainer(net, 1);
-				
-				int max=100;
-				for(int i=0;i<max;i++){
-					int x=getRandom(0, 10);
-					int y=getRandom(0, 10);
-					int z=getRandom(0, 10);
-					Vol v=ConvnetJs.createVol(1, 1, 3, 0);
-					v.set(1, 1, new int[]{x,y,z});
-					
-					Stats s=trainer.train(v, 0);
-					LogUtils.log(s);
-				}
-				
-				for(int i=0;i<max;i++){
-					int x=getRandom(100, 200);
-					int y=getRandom(100, 200);
-					int z=getRandom(100, 200);
-					Vol v=ConvnetJs.createVol(1, 1, 3, 0);
-					v.set(1, 1, new int[]{x,y,z});
-					
-					Stats s=trainer.train(v, 1);
-					LogUtils.log(s);
-				}
-				
-				
-				
-				for(int i=0;i<10;i++){
-					int x=getRandom(0, 10);
-					int y=getRandom(0, 10);
-					int z=getRandom(0, 10);
-					Vol v=ConvnetJs.createVol(1, 1, 3, 0);
-					v.set(1, 1, new int[]{x,y,z});
-					Vol r=net.forward(v);
-					LogUtils.log(i+":"+r.getW(0)+","+r.getW(1));
-				}
-				*/
 			}
 		});
-		panel.add(test2);
+		//panel.add(test2);
 		return panel;
+	}
+
+	protected void doTest1() {
+
+		StageControler controler=new StageControler(){
+			int stage=1;
+			double testBaseRatio=0.5;
+			double testBaseFalse=1.0;
+			
+			double testRatio;
+			double testFalse;
+			@Override
+			public void onEndTraining(boolean reachedGoal) {
+				LogUtils.log("finished:"+getStageResults().size());
+				stageResultObjects.setDatas(getStageResults());
+				stageResultObjects.update();
+			}
+
+			@Override
+			public void createNewStage() {
+				//update cell-list here.
+				stageResultObjects.setDatas(getStageResults());
+				stageResultObjects.update();
+				
+				//check last stage logs.
+				StageResult result=getStageResults().get(getStageResults().size()-1);
+				LogUtils.log(result.getStage()+","+result.getScore());
+				
+				stage++;
+				LogUtils.log("create-stage"+stage);
+			}
+
+			@Override
+			public Score doTraining(int positiveRatio, boolean initial) {
+				LogUtils.log("initi-training ratio="+positiveRatio+",initial="+initial);
+				
+				testRatio=testBaseRatio;
+				testFalse=testBaseFalse;
+				
+				Score score=new Score(testRatio, testFalse);
+				testBaseRatio+=0.05;
+				testBaseFalse-=0.05;
+				return score;
+			}
+
+			@Override
+			public Score repeating() {
+				int random=(int) (Math.random()*2);
+				if(random==0){
+					testRatio+=0.01;
+				}else{
+					testFalse-=0.01;
+				}
+				return new Score(testRatio,testFalse);
+			}
+
+			@Override
+			public String makeJson() {
+				return "";
+			}
+			
+		};
+		
+		stageControler = new StageControler(){
+
+			@Override
+			public void onEndTraining(boolean reachedGoal) {
+				LogUtils.log("finished:"+getStageResults().size()+"goaled="+reachedGoal);
+				stageResultObjects.setDatas(getStageResults());
+				stageResultObjects.update();
+			}
+
+			@Override
+			public void createNewStage() {
+				LogUtils.log("clear-stage:"+getStageResults().size());
+				stageResultObjects.setDatas(getStageResults());
+				stageResultObjects.update();
+				addNewCascade();
+			}
+
+			@Override
+			public Score doTraining(int positiveRatio, boolean initial) {
+				doTrain(positiveRatio,initial);
+				TestResult result=doTestLastPositiveTrainedAll();
+				TestResult missHit=doTestCascadeReal(getLastCascade(),false);
+				
+				return new Score(result.getMatchRate(),missHit.getFalseAlarmRate());
+			}
+
+			@Override
+			public Score repeating() {
+				doRepeat(false);
+				TestResult result=doTestLastPositiveTrainedAll();
+				TestResult missHit=doTestCascadeReal(getLastCascade(),false);
+				
+				return new Score(result.getMatchRate(),missHit.getFalseAlarmRate());
+			}
+
+			@Override
+			public String makeJson() {
+				return toJson();
+			}
+			
+		};
+		
+		stageControler.start(new LearningInfo(10, 0.98, 0.5, 0.2, 1, 10, 6, 3000));
+	}
+	
+	public String getNegativeInfo(){
+		int totalRect=0;
+		for(CVImageData data:negativesZip.getDatas()){
+			for(ImageElement image:negativesZip.getImageElement(data).asSet()){
+			List<Rect> rects=loadRect(image, data.getFileName());
+			totalRect+=rects.size();
+			}
+		}
+
+		return "negative-info:image="+negativesZip.getDatas().size()+" images,total-rect="+totalRect;
 	}
 
 	private void loadNegativeZip() {
@@ -765,6 +1149,8 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		negativesZip.setName(negativeImageName);
 		negativesZip.shuffle();//negative file need shuffle?
 		checkState(negativesZip.size()>0,"some how empty zip or index/bg");
+		
+		LogUtils.log(getNegativeInfo());
 		
 		LogUtils.log("load negatives from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
 		
@@ -919,7 +1305,9 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 		droppedList.addAll(temporalyIgnoreList);
 		temporalyIgnoreList.clear();
 		
+		updateCascadeLabel();
 		
+		LogUtils.log(getNegativeInfo());
 	}
 
 	public  static  final native Vol testb(double[] values) /*-{
@@ -944,10 +1332,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 		int depth=8*lbpDataSplit*lbpDataSplit;
 		int neutron=8*3;
 		int classes=5; //1pos and 4 neg(lbp details)
-		return ConvnetJs.createRawDepathNet2(1,1,depth,neutron , classes);//*lbpDataSplit*lbpDataSplit
-		//return ConvnetJs.createDepathNet(1,1,8*lbpDataSplit*lbpDataSplit, 8*lbpDataSplit*lbpDataSplit*10, 2);
-		
-		//return ConvnetJs.createGrayImageNet2(24, 24, classNumber);
+		return ConvnetJs.createRawDepathNet2(1,1,depth,neutron , classes);
 	}
 	
 	
@@ -978,25 +1363,7 @@ protected void doRepeat(boolean initial) {
 		Stopwatch watch=Stopwatch.createStarted();
 		for(PassedData passedData:lastLeaningList){
 			Vol origin=passedData.getVol();
-			/*
-			Vol copy=createNewVol();
 			
-			//int r=getRandom(0,origin.getLength());
-			//copy values.
-			for(int i=0;i<origin.getLength();i++){
-				double v=origin.getW(i);
-				/*
-				if(r==i){
-					if(v<144){//trying difference value,but seems not working
-						v+=1;
-					}
-				}
-				*/
-				//copy.setW(i, v);
-			//}
-		
-			//LogUtils.log("set-vallue:"+Joiner.on(",").join(copy.getWAsList()));
-			//getLastCascadesTrainer().train(copy, passedData.isNegative()?1:0);
 			getLastCascadesTrainer().train(origin, passedData.getClassIndex());
 			trained++;
 		}
@@ -1074,9 +1441,9 @@ protected void doRepeat(boolean initial) {
 				
 			
 				if(horizontal){
-					CanvasUtils.copyToFlipHorizontal(sharedCanvas, resizedCanvas);
+					CanvasUtils.drawToFlipHorizontal(sharedCanvas, resizedCanvas);
 				}else{
-					CanvasUtils.copyTo(sharedCanvas, resizedCanvas);
+					CanvasUtils.drawTo(sharedCanvas, resizedCanvas);
 				}
 				
 				//resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
@@ -1123,11 +1490,7 @@ protected void doRepeat(boolean initial) {
 				getLastCascade().getTrainer().train(neg, negIndex);
 				lastLeaningList.add(new PassedData(neg, negIndex));
 				negative++;
-				
-				//if(negative%500==0){//need progress
-				//	LogUtils.log("trained-negative:"+negative+" time="+watch2.elapsed(TimeUnit.SECONDS));
-				//	watch2.reset();watch2.start();
-				//}
+			
 					
 				}
 				
@@ -1217,6 +1580,12 @@ protected void doRepeat(boolean initial) {
 		temporalyIgnoreList.clear();
 		trainedPositiveDatas.clear();		
 				
+		
+		updateCascadeLabel();
+	}
+
+	private void updateCascadeLabel() {
+		cascadeLabel.setText("cascade-size:"+cascades.size());
 	}
 
 	List<Double> minrateValues=Lists.newArrayList();
@@ -1336,9 +1705,14 @@ protected void doRepeat(boolean initial) {
 		}
 		mutchRect.clear();
 		successPosPanel.clear();
-		int minW=24;//TODO change based clip
-		int minH=14;
-		double min_scale=1.6;//no need really small pixel
+		int minW=detectWidth.getValue();
+		int minH=detectHeight.getValue();
+		
+		checkState(minW>0 && minH>0,"invaid detect-size:"+minW+"x"+minH);
+		
+		
+		
+		double min_scale=detectInitialScale.getValue();//usually this is 1.0 but skip small item
 		Canvas grayscaleCanvasForDetector=Canvas.createIfSupported();
 		
 		
@@ -1383,9 +1757,9 @@ protected void doRepeat(boolean initial) {
 	protected List<Rect> generateRect(ImageElement imageElement,int stepScale,double scale_factor) {
 		Stopwatch watch=Stopwatch.createStarted();
 		List<Rect> rects=Lists.newArrayList();
-		int minW=26;//TODO change based clip
-		int minH=24;
-		double min_scale=1.6;//no need really small pixel
+		int minW=detectWidth.getValue();
+		int minH=detectHeight.getValue();
+		double min_scale=1.2;//no need really small pixel
 		
 		int imageW=imageElement.getWidth();
 		int imageH=imageElement.getHeight();
@@ -1494,15 +1868,7 @@ protected void doRepeat(boolean initial) {
         			conf.setConfidence(passMyself.getW(0));
         			mutchRect.add(conf);
 				}
-				/*
-				Vol result=net.forward(vol);
-        		if(result.getW(0)>result.getW(1)){
-        			successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
-        			ConfidenceRect conf=new ConfidenceRect(sharedRect);
-        			conf.setConfidence(result.getW(0));
-        			mutchRect.add(conf);
-        		}
-        		*/
+				
 				count++;
         		//detect
         		
@@ -1513,48 +1879,6 @@ protected void doRepeat(boolean initial) {
 	}
 
 
-	/*
-	private void loadZip(){
-		BrowserUtils.loadBinaryFile("allposimages.zip",new LoadBinaryListener() {
-			
-			
-			
-
-			@Override
-			public void onLoadBinaryFile(ArrayBuffer buffer) {
-				Uint8Array array=Uint8Array.createUint8(buffer);
-			    loadedZip = JSZip.loadFromArray(array);
-				
-				JSFile indexFile=loadedZip.getFile("info.txt");
-				if(indexFile==null){
-					indexFile=loadedZip.getFile("info.dat");//i'm windows-os user and .dat extensin used other case
-				}
-				
-				if(indexFile==null){
-					Window.alert("info.txt or info.dat name not found here.or in folder");
-					return;
-				}
-				
-				
-				String text=indexFile.asText();
-				
-				List<String> lines=CSVUtils.splitLinesWithGuava(text);
-				
-				checkState(lines.size()>0,"info.txt or info.dat is empty");
-				positiveDatas=FluentIterable.from(lines).transform(new CVImageDataConverter()).toList();
-				//LogUtils.log("p-size:"+positiveDatas.size());
-				//analyzeBt.setEnabled(true);
-				
-				netUploadBt.setEnabled(true);
-			}
-			
-			@Override
-			public void onFaild(int states, String statesText) {
-				LogUtils.log(states+","+statesText);
-			}
-		});
-	}
-	*/
 	
 	
 	public int getRandom(int min,int max){
@@ -2109,6 +2433,7 @@ protected void doRepeat(boolean initial) {
 			return (double)missMatch/(successMiss+missMatch);
 		}
 	}
+	private boolean debugThumbImage;
 public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		
 	
@@ -2163,12 +2488,16 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			if(vol2.getW(0)>minPositiveRate){
 			//if(vol2.getW(0)>vol2.getW(1)){
 				successMatch++;
+				if(debugThumbImage){
 				successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
+				}
 			}else{
 				faildMatch++;
 				String newDataUrl=resizedCanvas.toDataUrl();
+				if(debugThumbImage){
 				faildPositivedDatasForRetrainCommand.add(newDataUrl);//reuse when retrain
 				faildPosPanel.add(new Image(newDataUrl));
+				}
 			}
 			
 		}
@@ -2203,10 +2532,14 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			}
 			if(value.getW(1)>(1.0-minPositiveRate)){
 			//if(value.getW(1)>value.getW(0)){
+				if(debugThumbImage){
 				successNegativesPanel.add(new Image(imageDataUrl));
+				}
 				successMiss++;
 			}else{
+				if(debugThumbImage){
 				faildNegativePanel.add(new Image(imageDataUrl));
+				}
 				missMatch++;
 			}
 		}
@@ -2361,7 +2694,11 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			
 			//Rect r=new Rect(x,y,randomWidth,randomHeight);//more varaerty of rect
 			Rect r=rects.remove(0);
-			rects.add(r);//for loop;
+			
+			//rects.add(r);///stop looping
+			if(rects.size()==0){
+				negativesZip.getDatas().remove(pdata);//remove permanently,if neee use,do refrash page
+			}
 			//LogUtils.log(r);
 			
 			//LogUtils.log("train:"+data.getFileName()+","+r.toString());
@@ -2384,6 +2721,16 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	private ValueListBox<Double> minRateBox;
 
 	private Label variationLevelLabel;
+
+	private IntegerBox detectWidth;
+
+	private IntegerBox detectHeight;
+
+	private Label cascadeLabel;
+
+	private EasyCellTableObjects<StageResult> stageResultObjects;
+
+	private StageControler stageControler;
 	private Vol createVolFromImageData(ImageData imageData){
 		//return createGrayscaleImageVolFromImageData(imageData);
 		return createLBPDepthVolFromImageData(imageData);
@@ -2513,7 +2860,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	private List<Rect> loadRect(ImageElement image, String fileName) {
 		List<Rect> rects=rectsMap.get(fileName);
 		if(rects==null){
-			rects=generateRect(image, 6, 1.6);
+			rects=generateRect(image, 4, 1.4);
 			//rects=generateRect(image, 2, 1.2);//this is too much make rects
 			rectsMap.put(fileName, ListUtils.shuffle(rects));
 		}
