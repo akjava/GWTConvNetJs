@@ -31,6 +31,7 @@ import com.akjava.gwt.lib.client.ImageElementUtils;
 import com.akjava.gwt.lib.client.LogUtils;
 import com.akjava.gwt.lib.client.experimental.ExecuteButton;
 import com.akjava.gwt.lib.client.experimental.RectCanvasUtils;
+import com.akjava.gwt.lib.client.experimental.ToStringValueListBox;
 import com.akjava.gwt.lib.client.experimental.lbp.ByteImageDataIntConverter;
 import com.akjava.gwt.lib.client.experimental.lbp.SimpleLBP;
 import com.akjava.gwt.lib.client.experimental.opencv.CVImageData;
@@ -62,6 +63,8 @@ import com.google.gwt.editor.client.ValueAwareEditor;
 import com.google.gwt.editor.client.adapters.SimpleEditor;
 import com.google.gwt.event.dom.client.ClickEvent;
 import com.google.gwt.event.dom.client.ClickHandler;
+import com.google.gwt.event.logical.shared.ValueChangeEvent;
+import com.google.gwt.event.logical.shared.ValueChangeHandler;
 import com.google.gwt.http.client.Request;
 import com.google.gwt.http.client.RequestBuilder;
 import com.google.gwt.http.client.RequestCallback;
@@ -82,6 +85,7 @@ import com.google.gwt.user.client.Timer;
 import com.google.gwt.user.client.Window;
 import com.google.gwt.user.client.ui.Anchor;
 import com.google.gwt.user.client.ui.Button;
+import com.google.gwt.user.client.ui.CheckBox;
 import com.google.gwt.user.client.ui.DockLayoutPanel;
 import com.google.gwt.user.client.ui.DoubleBox;
 import com.google.gwt.user.client.ui.HorizontalPanel;
@@ -516,6 +520,165 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 		stageResultEditorDriver.initialize(resultEditor);
 		
 		VerticalPanel panel=new VerticalPanel();
+		
+		panel.add(new Label("Auto"));
+		//public LearningInfo(int maxStage, double minRate, double falseRate, double firstMatchRate,double firstFalseRate, int minRatio, int maxRatio, int maxVariation, int maxLearning) {
+		
+		HorizontalPanel firstPanel=new HorizontalPanel();
+		firstPanel.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
+		panel.add(firstPanel);
+		
+		firstPanel.add(new Label("MaxStage:"));
+		List<Integer> maxStageValue=Lists.newArrayList();
+		for(int i=1;i<=20;i++){
+			maxStageValue.add(i);
+		}
+		final ToStringValueListBox<Integer> maxStageBox=new ToStringValueListBox<Integer>(maxStageValue);
+		firstPanel.add(maxStageBox);
+		maxStageBox.setValue(10);
+		
+		firstPanel.add(new Label("MatchRate:"));
+		final DoubleBox matchRateBox=new DoubleBox();
+		matchRateBox.setWidth("40px");
+		firstPanel.add(matchRateBox);
+		matchRateBox.setValue(0.98);
+		
+		firstPanel.add(new Label("FalseRate:"));
+		final DoubleBox falseRateBox=new DoubleBox();
+		falseRateBox.setWidth("40px");
+		falseRateBox.setValue(0.5);
+		firstPanel.add(falseRateBox);
+		
+		List<Integer> ratioValue=Lists.newArrayList();
+		for(int i=1;i<=10;i++){
+			ratioValue.add(i);
+		}
+		firstPanel.add(new Label("maxPositiveRatio:"));
+		final ToStringValueListBox<Integer> maxPositiveBox=new ToStringValueListBox<Integer>(ratioValue);
+		maxPositiveBox.setValue(10);
+		firstPanel.add(maxPositiveBox);
+		
+		firstPanel.add(new Label("minPositiveRatio:"));
+		final ToStringValueListBox<Integer> minPositiveBox=new ToStringValueListBox<Integer>(ratioValue);
+		minPositiveBox.setValue(2);
+		firstPanel.add(minPositiveBox);
+		
+		//TODO make min LerningBox to better result
+		
+		firstPanel.add(new Label("maxLerning:"));
+		final IntegerBox maxLearningBox=new IntegerBox();
+		maxLearningBox.setValue(2000);
+		maxLearningBox.setWidth("80px");
+		firstPanel.add(maxLearningBox);
+		
+		HorizontalPanel secondPanel=new HorizontalPanel();
+		secondPanel.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
+		panel.add(secondPanel);
+		
+		
+		
+		
+		final DoubleBox firstMatchRateBox=new DoubleBox();
+		firstMatchRateBox.setWidth("40px");
+		firstMatchRateBox.setValue(0.995);
+		
+		
+		
+		final DoubleBox firstFalseRateBox=new DoubleBox();
+		firstFalseRateBox.setWidth("40px");
+		firstFalseRateBox.setValue(0.2);
+		
+		
+		
+		
+		final CheckBox useFirstSpecialValue=new CheckBox();
+		secondPanel.add(new Label("use first stage special value"));
+		useFirstSpecialValue.setValue(true);
+		useFirstSpecialValue.addValueChangeHandler(new ValueChangeHandler<Boolean>() {
+			
+			@Override
+			public void onValueChange(ValueChangeEvent<Boolean> event) {
+				firstMatchRateBox.setEnabled(event.getValue());
+				firstFalseRateBox.setEnabled(event.getValue());
+			}
+		});
+		secondPanel.add(useFirstSpecialValue);
+		secondPanel.add(new Label("FirstMatchRate:"));
+		secondPanel.add(firstMatchRateBox);
+		secondPanel.add(new Label("FirstFalseRate:"));
+		secondPanel.add(firstFalseRateBox);
+		
+
+		HorizontalPanel buttons=new HorizontalPanel();
+		panel.add(buttons);
+		ExecuteButton startBt=new ExecuteButton("Start",false) {
+			
+			@Override
+			public void executeOnClick() {
+				stageControler = new StageControler(){
+
+					@Override
+					public void onEndTraining(boolean reachedGoal) {
+						LogUtils.log("finished:"+getStageResults().size()+"goaled="+reachedGoal);
+						stageResultObjects.setDatas(getStageResults());
+						stageResultObjects.update();
+						setEnabled(true);
+					}
+
+					@Override
+					public void createNewStage() {
+						LogUtils.log("clear-stage:"+getStageResults().size());
+						stageResultObjects.setDatas(getStageResults());
+						stageResultObjects.update();
+						addNewCascade();
+					}
+
+					@Override
+					public Score doTraining(int positiveRatio, boolean initial) {
+						doTrain(positiveRatio,initial);
+						TestResult result=doTestLastPositiveTrainedAll();
+						TestResult missHit=doTestCascadeReal(getLastCascade(),false);
+						
+						return new Score(result.getMatchRate(),missHit.getFalseAlarmRate());
+					}
+
+					@Override
+					public Score repeating() {
+						doRepeat(false);
+						TestResult result=doTestLastPositiveTrainedAll();
+						TestResult missHit=doTestCascadeReal(getLastCascade(),false);
+						
+						return new Score(result.getMatchRate(),missHit.getFalseAlarmRate());
+					}
+
+					@Override
+					public String makeJson() {
+						return toJson();
+					}
+					
+				};
+				
+				//TODO make variation box;
+				double startMatch=useFirstSpecialValue.getValue()?firstMatchRateBox.getValue():matchRateBox.getValue();
+				double startFalse=useFirstSpecialValue.getValue()?firstFalseRateBox.getValue():falseRateBox.getValue();
+				stageControler.start(new LearningInfo(maxStageBox.getValue(), matchRateBox.getValue(), falseRateBox.getValue(),startMatch, startFalse, 
+						minPositiveBox.getValue(), maxPositiveBox.getValue(), 6, maxLearningBox.getValue()));
+				
+			}
+		};
+		buttons.add(startBt);
+		
+		Button test1Cancel=new Button("Cancel",new ClickHandler() {
+			
+			@Override
+			public void onClick(ClickEvent event) {
+				stageControler.setCanceled(true);
+				stageResultObjects.update();//for manual update
+			}
+		});
+		buttons.add(test1Cancel);
+		
+		
 		HorizontalPanel h=new HorizontalPanel();
 		panel.add(h);
 		SimpleCellTable<StageResult> table=new SimpleCellTable<StageResult>() {
@@ -602,6 +765,11 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 		h.add(table);
 		
 		panel.add(resultEditor);
+		
+		
+		
+		
+		
 		
 		return panel;
 	}
@@ -893,26 +1061,34 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 	private HorizontalPanel cerateTestButtons() {
 		HorizontalPanel panel=new HorizontalPanel();
 
-Button test=new Button("Test",new ClickHandler() {
-	
+		ExecuteButton execute=new ExecuteButton("Test1",false) {
+			
 			@Override
-			public void onClick(ClickEvent event) {
-				doTest1();
-				
-				
-				/*
-				//calculate time
-				for(int i=0;i<10;i++){
-					Vol v=createRandomVol().get();
-					Vol result=getLastCascadesNet().forward(v);
-					LogUtils.log(result.getW(0)+","+result.getW(1));
-					
-				}
-				*/
+			public void executeOnClick() {
+				final Stopwatch watch=Stopwatch.createStarted();
+				Timer timer=new Timer(){
+					int total=0;
+					int max=10;
+					@Override
+					public void run() {
+						Optional<Vol> optional=createRandomVol(getLastCascade());
+						if(optional.isPresent()){
+							total++;
+							LogUtils.log("negatives:"+negativeCreated);
+						}
+						
+						if(total==max){
+							cancel();
+							LogUtils.log("find-time:"+watch.elapsed(TimeUnit.SECONDS)+","+negativeCreated);
+							setEnabled(true);
+							negativeCreated=0;
+						}
+					}};
+				timer.scheduleRepeating(20);
 				
 			}
-		});
-		panel.add(test);
+		};
+		panel.add(execute);
 		
 		Button test1Cancel=new Button("Test1 Cancel",new ClickHandler() {
 			
@@ -922,7 +1098,7 @@ Button test=new Button("Test",new ClickHandler() {
 				stageResultObjects.update();//for manual update
 			}
 		});
-		panel.add(test1Cancel);
+		//panel.add(test1Cancel);
 		
 		Button test2=new Button("Test2",new ClickHandler() {
 			Net testNet=ConvnetJs.createRawDepathNet(1, 1, 2, 4, 2);
@@ -1009,8 +1185,10 @@ Button test=new Button("Test",new ClickHandler() {
 		return panel;
 	}
 
-	protected void doTest1() {
+	protected void doTestx() {
 
+		
+		
 		StageControler controler=new StageControler(){
 			int stage=1;
 			double testBaseRatio=0.5;
@@ -1070,49 +1248,6 @@ Button test=new Button("Test",new ClickHandler() {
 			
 		};
 		
-		stageControler = new StageControler(){
-
-			@Override
-			public void onEndTraining(boolean reachedGoal) {
-				LogUtils.log("finished:"+getStageResults().size()+"goaled="+reachedGoal);
-				stageResultObjects.setDatas(getStageResults());
-				stageResultObjects.update();
-			}
-
-			@Override
-			public void createNewStage() {
-				LogUtils.log("clear-stage:"+getStageResults().size());
-				stageResultObjects.setDatas(getStageResults());
-				stageResultObjects.update();
-				addNewCascade();
-			}
-
-			@Override
-			public Score doTraining(int positiveRatio, boolean initial) {
-				doTrain(positiveRatio,initial);
-				TestResult result=doTestLastPositiveTrainedAll();
-				TestResult missHit=doTestCascadeReal(getLastCascade(),false);
-				
-				return new Score(result.getMatchRate(),missHit.getFalseAlarmRate());
-			}
-
-			@Override
-			public Score repeating() {
-				doRepeat(false);
-				TestResult result=doTestLastPositiveTrainedAll();
-				TestResult missHit=doTestCascadeReal(getLastCascade(),false);
-				
-				return new Score(result.getMatchRate(),missHit.getFalseAlarmRate());
-			}
-
-			@Override
-			public String makeJson() {
-				return toJson();
-			}
-			
-		};
-		
-		stageControler.start(new LearningInfo(10, 0.98, 0.5, 0.2, 1, 10, 6, 3000));
 	}
 	
 	public String getNegativeInfo(){
@@ -1941,8 +2076,10 @@ protected void doRepeat(boolean initial) {
 	public Optional<Vol> createRandomVol(CascadeNet cascadeNet){
 		
 		Vol filterd=null;
-		int maxError=10000;
-		int error=0;
+		
+		//int maxError=10000000;
+		//int error=0;
+		
 		while(filterd==null){
 			Optional<Vol> optional2=createRandomVol();
 			if(!optional2.isPresent()){//usually never faild creating randon vol
@@ -1956,10 +2093,18 @@ protected void doRepeat(boolean initial) {
 		if(optional.isPresent()){
 			filterd=optional.get();
 			}
-		error++;
-		if(error>maxError){
+		if(negativesZip.getDatas().size()==0){
+			Window.alert("No more Negative Images return null");
 			break;
 		}
+		/*
+		 * stop using max limi,because 
+		error++;
+		if(error>maxError){
+			Window.alert("critical error-not found image");
+			break;
+		}
+		*/
 		
 		}
 		return Optional.of(filterd);
@@ -2250,6 +2395,7 @@ protected void doRepeat(boolean initial) {
 	
 	List<String> faildPositivedDatasForRetrainCommand=Lists.newArrayList();
 	
+	/*
 	public void doTest(){
 		faildPositivedDatasForRetrainCommand.clear();
 		successPosPanel.clear();
@@ -2334,7 +2480,7 @@ protected void doRepeat(boolean initial) {
 		
 		LogUtils.log("finish test:"+ stopWatch.elapsed(TimeUnit.SECONDS)+"s");
 	}
-	
+	*/
 	boolean trainSecond;
 	
 	List<PassedData> passedVols=Lists.newArrayList();
@@ -2652,22 +2798,42 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	
 	private Map<String,List<Rect>> rectsMap=new HashMap<String, List<Rect>>();
 	
+	private boolean useRandom;
+	private ImageElement lastImageElement;
+	private CVImageData lastData;
 	public Optional<Vol> createRandomVol(){
 		Stopwatch watch=Stopwatch.createStarted();
 		for(int j=0;j<20;j++){
-		int index=getRandom(0, negativesZip.size());
+		int index=useRandom?getRandom(0, negativesZip.size()):0;
+		
 		CVImageData pdata=negativesZip.get(index);
+		
+		
+		
 		//String extension=FileNames.getExtension(pdata.getFileName());
 		//FileType type=FileType.getFileTypeByExtension(extension);//need to know jpeg or png
 		//byte[] bt=imgFile.asUint8Array().toByteArray();
 		//this action kill 
+		
+		ImageElement negativeImage=null;
+		
+		if(pdata!=lastData){
 		Optional<ImageElement> optional=negativesZip.getImageElement(pdata);
 		if(!optional.isPresent()){
 			LogUtils.log("skip.image not found in zip(or filter faild):"+pdata.getFileName()+" of "+negativesZip.getName());
 			continue;
 		}
+		negativeImage=optional.get();
+		}else{
+			negativeImage=lastImageElement;
+		}
 		
-		ImageElement negativeImage=optional.get();
+		lastData=pdata;
+		lastImageElement=negativeImage;
+		
+		
+		
+		
 		//LogUtils.log("load-image:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
 		watch.reset();watch.start();
 		
@@ -2698,6 +2864,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			//rects.add(r);///stop looping
 			if(rects.size()==0){
 				negativesZip.getDatas().remove(pdata);//remove permanently,if neee use,do refrash page
+				LogUtils.log("rect is empty removed:"+pdata.getFileName());
 			}
 			//LogUtils.log(r);
 			
