@@ -32,7 +32,7 @@ public static final int POSITIVES=0;
 public static final int NEGATIVES=1;
 public static final int IMAGES=2;
 public int type;
-private Map<String,StringBuffer> cachedImageElement=new HashMap<String, StringBuffer>();
+private Map<String,String> cachedImageElement=new HashMap<String, String>();
 private boolean useCache=true;//default true
 private JSZip zip;
 private String name="";
@@ -74,7 +74,7 @@ public Optional<ImageElement> getImageElement(CVImageData data){
 	ImageElement image=null;
 	
 	if(useCache){//use cache really consume browser memory.take care
-		StringBuffer url=cachedImageElement.get(data.getFileName());
+		String url=cachedImageElement.get(data.getFileName());
 	if(url!=null){
 		image=ImageElementUtils.create(url.toString());
 		}
@@ -104,7 +104,7 @@ public Optional<ImageElement> getImageElement(CVImageData data){
 		
 		
 		if(useCache){
-			cachedImageElement.put(data.getFileName(), new StringBuffer(dataUrl));
+			cachedImageElement.put(data.getFileName(), dataUrl);
 		}
 	}
 	return Optional.of(image);
