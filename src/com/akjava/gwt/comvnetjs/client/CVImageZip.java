@@ -5,6 +5,7 @@ import static com.google.common.base.Preconditions.checkState;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import com.akjava.gwt.html5.client.file.Uint8Array;
 import com.akjava.gwt.jszip.client.JSFile;
@@ -19,6 +20,7 @@ import com.akjava.lib.common.utils.CSVUtils;
 import com.akjava.lib.common.utils.FileNames;
 import com.akjava.lib.common.utils.ListUtils;
 import com.google.common.base.Optional;
+import com.google.common.base.Stopwatch;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.Lists;
 import com.google.gwt.core.client.JsArrayString;
@@ -63,7 +65,12 @@ private List<CVImageData> datas=Lists.newArrayList();
 	return useCache;
 }
 
+int totalImage;
+long totalTime;
+long uinttime;
 public Optional<ImageElement> getImageElement(CVImageData data){
+	
+	
 	ImageElement image=null;
 	
 	if(useCache){//use cache really consume browser memory.take care
@@ -81,10 +88,19 @@ public Optional<ImageElement> getImageElement(CVImageData data){
 		
 		String extension=FileNames.getExtension(data.getFileName());
 		FileType type=FileType.getFileTypeByExtension(extension);//need to know jpeg or png
-		String dataUrl=Base64Utils.toDataUrl(type.getMimeType(),imgFile.asUint8Array().toByteArray());//should use cache 300MB etc
+		//Stopwatch watch=Stopwatch.createStarted();
+		imgFile.asUint8Array();
+		//uinttime+=watch.elapsed(TimeUnit.MILLISECONDS);watch.reset();watch.start();
+		
+		String dataUrl=Base64Utils.toDataUrl(type.getMimeType(),imgFile.asUint8Array());//should use cache 300MB etc
+		
+		totalImage++;
+		//totalTime+=watch.elapsed(TimeUnit.MILLISECONDS);
+		
 		dataUrl=doFilter(dataUrl);
 		image=ImageElementUtils.create(dataUrl);
 		
+		//LogUtils.log("image-base64:"+totalImage+",time="+totalTime+",uint="+uinttime);
 		
 		
 		if(useCache){

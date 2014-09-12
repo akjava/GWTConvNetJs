@@ -389,6 +389,8 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 		mainPanel.add(createFullAutoControls());
 		
 		updateCascadeLabel();
+		testCanvas = CanvasUtils.createCanvas(200, 200);;
+		mainPanel.add(testCanvas);
 	}
 	
 	 interface Driver extends SimpleBeanEditorDriver< StageResult,  StageResultEditor> {}
@@ -1065,6 +1067,18 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 			
 			@Override
 			public void executeOnClick() {
+				Stopwatch watch=Stopwatch.createStarted();
+				List<Rect> rects=generateRect(2000,2000, 4, 1.4,24,14,1.2);
+				LogUtils.log("rect-size:"+rects.size());
+				LogUtils.log("rect-time:"+watch.elapsed(TimeUnit.MILLISECONDS));
+				for(Rect rect:rects){
+					RectCanvasUtils.stroke(rect, testCanvas, "#000");
+				}
+				
+//				Canvas canvas=
+				
+				//calcurate generation vol-time
+				/*
 				final Stopwatch watch=Stopwatch.createStarted();
 				Timer timer=new Timer(){
 					int total=0;
@@ -1085,7 +1099,7 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 						}
 					}};
 				timer.scheduleRepeating(20);
-				
+				*/
 			}
 		};
 		panel.add(execute);
@@ -1251,13 +1265,17 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 	}
 	
 	public String getNegativeInfo(){
+		Stopwatch watch=Stopwatch.createUnstarted();
 		int totalRect=0;
 		for(CVImageData data:negativesZip.getDatas()){
 			for(ImageElement image:negativesZip.getImageElement(data).asSet()){
+				watch.start();
 			List<Rect> rects=loadRect(image, data.getFileName());
+			watch.stop();
 			totalRect+=rects.size();
 			}
 		}
+		LogUtils.log("generate-time:"+watch.elapsed(TimeUnit.MILLISECONDS));
 
 		return "negative-info:image="+negativesZip.getDatas().size()+" images,total-rect="+totalRect;
 	}
@@ -1889,15 +1907,12 @@ protected void doRepeat(boolean initial) {
 	        }
 	}
 	
-	protected List<Rect> generateRect(ImageElement imageElement,int stepScale,double scale_factor) {
+	protected List<Rect> generateRect(int imageW,int imageH,int stepScale,double scale_factor,int minW,int minH,double min_scale) {
 		Stopwatch watch=Stopwatch.createStarted();
 		List<Rect> rects=Lists.newArrayList();
-		int minW=detectWidth.getValue();
-		int minH=detectHeight.getValue();
-		double min_scale=1.2;//no need really small pixel
 		
-		int imageW=imageElement.getWidth();
-		int imageH=imageElement.getHeight();
+		
+		
 		
 		
 		while(minW*min_scale<imageW && minH*min_scale<imageH){
@@ -2898,6 +2913,8 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	private EasyCellTableObjects<StageResult> stageResultObjects;
 
 	private StageControler stageControler;
+
+	private Canvas testCanvas;
 	private Vol createVolFromImageData(ImageData imageData){
 		//return createGrayscaleImageVolFromImageData(imageData);
 		return createLBPDepthVolFromImageData(imageData);
@@ -3025,9 +3042,13 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	
 	@SuppressWarnings("unchecked")
 	private List<Rect> loadRect(ImageElement image, String fileName) {
+		int minW=detectWidth.getValue();
+		int minH=detectHeight.getValue();
+		double min_scale=1.2;//no need really small pixel
+		
 		List<Rect> rects=rectsMap.get(fileName);
 		if(rects==null){
-			rects=generateRect(image, 4, 1.4);
+			rects=generateRect(image.getWidth(),image.getHeight(), 4, 1.4,minW,minH,min_scale);
 			//rects=generateRect(image, 2, 1.2);//this is too much make rects
 			rectsMap.put(fileName, ListUtils.shuffle(rects));
 		}
