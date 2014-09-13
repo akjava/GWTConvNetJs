@@ -16,6 +16,7 @@ import com.akjava.gwt.comvnetjs.client.StageControler.PhaseData;
 import com.akjava.gwt.comvnetjs.client.StageControler.Score;
 import com.akjava.gwt.comvnetjs.client.StageControler.ScoreGroup;
 import com.akjava.gwt.comvnetjs.client.StageControler.StageResult;
+import com.akjava.gwt.comvnetjs.client.worker.MakeRectParam;
 import com.akjava.gwt.html5.client.download.HTML5Download;
 import com.akjava.gwt.html5.client.file.File;
 import com.akjava.gwt.html5.client.file.FileUploadForm;
@@ -59,6 +60,8 @@ import com.google.gwt.canvas.client.Canvas;
 import com.google.gwt.canvas.dom.client.ImageData;
 import com.google.gwt.core.client.EntryPoint;
 import com.google.gwt.core.client.GWT;
+import com.google.gwt.core.client.JavaScriptObject;
+import com.google.gwt.core.client.JsArrayString;
 import com.google.gwt.dom.client.ImageElement;
 import com.google.gwt.dom.client.Style.Unit;
 import com.google.gwt.editor.client.Editor;
@@ -104,6 +107,7 @@ import com.google.gwt.user.client.ui.ScrollPanel;
 import com.google.gwt.user.client.ui.ValueListBox;
 import com.google.gwt.user.client.ui.VerticalPanel;
 import com.google.gwt.webworker.client.MessageEvent;
+import com.google.gwt.webworker.client.Worker;
 
 /**
  * Entry point classes define <code>onModuleLoad()</code>.
@@ -1074,7 +1078,7 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 			@Override
 			public void executeOnClick() {
 				Stopwatch watch=Stopwatch.createStarted();
-				List<Rect> rects=generateRect(2000,2000, 4, 1.4,24,14,1.2);
+				List<Rect> rects=RectGenerator.generateRect(2000,2000, 4, 1.4,24,14,1.2);
 				LogUtils.log("rect-size:"+rects.size());
 				LogUtils.log("rect-time:"+watch.elapsed(TimeUnit.MILLISECONDS));
 				for(Rect rect:rects){
@@ -1329,8 +1333,9 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 					
 					//how to catch all data extracted.
 					if(extracted==negativesZip.getDatas().size()){
+						//createNegativeRectangles();//this way slow,but less freeze time
 						LogUtils.log(getNegativeInfo());
-						LogUtils.log("load negatives from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+						LogUtils.log("load negatives-image-only from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
 					}
 					
 					return;
@@ -1382,6 +1387,86 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		LogUtils.log(states+","+statesText);
 	}
 });
+		
+	}
+	
+	//some how this is slow
+	private void createNegativeRectangles(){
+		final Stopwatch watch=Stopwatch.createStarted();
+		WorkerPool workerPool=new WorkerPool(4,"/makerect/worker.js") {
+			int extracted;
+			@Override
+			public void extractData(WorkerPoolData data, MessageEvent event) {
+				MakeRectResult result=event.getDataAsJavaScriptObject().cast();
+				extracted++;
+				
+				List<Rect> rects=Lists.newArrayList();
+				for(int i=0;i<result.getRects().length();i++){
+					Rect rect=Rect.fromString(result.getRects().get(i));
+					rects.add(rect);
+				}
+				
+				
+				rectsMap.put(result.getName(), ListUtils.shuffle(rects));
+				
+				if(extracted==negativesZip.getDatas().size()){
+					LogUtils.log(getNegativeInfo());
+					LogUtils.log("preload rectangles "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+				}
+				
+				
+			}
+		};
+		
+		final List<CVImageData> datas=Lists.newArrayList(negativesZip.getDatas());
+		
+		final int minW=detectWidth.getValue();
+		final int minH=detectHeight.getValue();
+		final double min_scale=1.2;//no need really small pixel
+		
+		WorkerPoolMultiCaller<CVImageData> multiCaller=new WorkerPoolMultiCaller<CVImageData>(workerPool,datas) {
+
+			@Override
+			public WorkerPoolData convertToData(final CVImageData data) {
+				Optional<ImageElement> optional=negativesZip.getImageElement(data);
+				for(final ImageElement image:optional.asSet()){
+					WorkerPoolData wdata=new WorkerPoolData(){
+
+						@Override
+						public String getParameterString(String key) {
+							// TODO Auto-generated method stub
+							return null;
+						}
+
+						@Override
+						public void postData(Worker worker) {
+							worker.postMessage(MakeRectParam.create(data.getFileName(), image.getWidth(), image.getHeight(), 4, 1.4,minW,minH,min_scale));
+						}
+						
+					};
+					return wdata;
+				}
+				//never happen todo support something
+				return null;
+			}
+			
+		};
+		multiCaller.start(1);
+		
+	
+	}
+	public static class MakeRectResult extends JavaScriptObject{
+		protected MakeRectResult(){
+			
+		}
+
+		public final  native JsArrayString getRects()/*-{
+		return this.rects;
+		}-*/;
+		
+		public final  native String getName()/*-{
+		return this.name;
+		}-*/;
 		
 	}
 
@@ -1545,7 +1630,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 	private Set<String> temporalyIgnoreList=Sets.newHashSet();
 	
 	
-	int lbpDataSplit=2;//somewhere bug?
+	private static int lbpDataSplit=2;//somewhere bug?
 	
 	Net createNewNet(){
 		
@@ -1901,11 +1986,11 @@ protected void doRepeat(boolean initial) {
 
 	//private ArrayList<CVImageeData> negativeImagesData;
 	
-	 final SimpleLBP lbpConverter=new SimpleLBP(true, 2);//
+	 static final SimpleLBP lbpConverter=new SimpleLBP(true, 2);//
 	
 	int count=0;
 	List<ConfidenceRect> mutchRect=Lists.newArrayList();
-	ByteImageDataIntConverter byteDataIntConverter=new ByteImageDataIntConverter(Canvas.createIfSupported().getContext2d(),true);
+	static ByteImageDataIntConverter byteDataIntConverter=new ByteImageDataIntConverter(Canvas.createIfSupported().getContext2d(),true);
 	/**
 	 * 
 	 * @param canvas
@@ -1975,23 +2060,7 @@ protected void doRepeat(boolean initial) {
 	        }
 	}
 	
-	protected List<Rect> generateRect(int imageW,int imageH,int stepScale,double scale_factor,int minW,int minH,double min_scale) {
-		Stopwatch watch=Stopwatch.createStarted();
-		List<Rect> rects=Lists.newArrayList();
-		
-		
-		
-		
-		
-		while(minW*min_scale<imageW && minH*min_scale<imageH){
-			generateRect(minW,minH,stepScale,min_scale,rects,imageW,imageH);
-			min_scale*=scale_factor;
-		}
-		
-		//LogUtils.log("genrate-rect-time:"+rects.size()+",time="+watch.elapsed(TimeUnit.SECONDS)+"s");
-		
-		return rects;
-	}
+
 	
 	
 	
@@ -2018,29 +2087,7 @@ protected void doRepeat(boolean initial) {
 	}
 	
 
-	protected void generateRect(int minW,int minH,int stepScale,double scale,List<Rect> rects,int imageW,int imageH) {
-		int clipWidth=(int) (minW*scale);
-		int clipHeight=(int)(minH*scale);
-        double step_x = (0.5 * scale + 1.5)*stepScale;//usually stepScale use for reduce detect rect size.js is really slow than C-lang
-        double step_y = step_x;
-        
-        Rect sharedRect=new Rect(0,0,clipWidth,clipHeight);
-        int endX=imageW-clipWidth;
-        int endY=imageH-clipHeight;
-        
-        
-        for(double x=0;x<endX;x+=step_x){
-        	for(double y=0;y<endY;y+=step_y){
-        		int dx=(int) x;
-        		int dy=(int)y;
-        		sharedRect.setX(dx);
-        		sharedRect.setY(dy);
-        		rects.add(sharedRect.copy());
-        	}
-        }
-        
-       
-	}
+
 	
 	protected void detectImage(int minW,int minH,int stepScale,double scale,Canvas imageCanvas) {
 		
@@ -2864,11 +2911,11 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		LogUtils.log("finish test:"+ stopWatch.elapsed(TimeUnit.SECONDS)+"s");
 	}
 	
-	private int netWidth=32;
-	private int netHeight=32;
+	static private int netWidth=32;
+	static private int netHeight=32;
 	
 	//expand net because of edge.
-	private int edgeSize=4;//must be can divided 2
+	static  private int edgeSize=4;//must be can divided 2
 	private Canvas resizedCanvas=CanvasUtils.createCanvas(netWidth+edgeSize, netHeight+edgeSize);//fixed size //can i change?
 	
 	private HorizontalPanel successPosPanel;
@@ -2983,14 +3030,14 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	private StageControler stageControler;
 
 	private Canvas testCanvas;
-	private Vol createVolFromImageData(ImageData imageData){
+	private static Vol createVolFromImageData(ImageData imageData){
 		//return createGrayscaleImageVolFromImageData(imageData);
 		return createLBPDepthVolFromImageData(imageData);
 	}
-	private Vol createNewVol(){
+	private static  Vol createNewVol(){
 		return ConvnetJs.createVol(1, 1, 8*lbpDataSplit*lbpDataSplit, 0);
 	}
-	private Vol createLBPDepthVolFromImageData(ImageData imageData){
+	private static Vol createLBPDepthVolFromImageData(ImageData imageData){
 		if(imageData.getWidth()!=netWidth+edgeSize || imageData.getHeight()!=netHeight+edgeSize){ //somehow still 26x26 don't care!
 			Window.alert("invalid size:"+imageData.getWidth()+","+imageData.getHeight()+" expected "+(netWidth+edgeSize)+"x"+(netHeight+edgeSize));
 			return null;
@@ -3023,10 +3070,10 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			//vol.set(0, 0,i,retInt[i]);//no normalize
 		}
 		
-		int r=getRandom(0, 100);
-		if(r==50){
+		//int r=getRandom(0, 100);
+		//if(r==50){
 			//LogUtils.log(Ints.join(",", retInt));
-		}
+		//}
 		/*
 		
 		for(int[][] values:splitArray(ints,2)){
@@ -3116,7 +3163,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		
 		List<Rect> rects=rectsMap.get(fileName);
 		if(rects==null){
-			rects=generateRect(image.getWidth(),image.getHeight(), 4, 1.4,minW,minH,min_scale);
+			rects=RectGenerator.generateRect(image.getWidth(),image.getHeight(), 4, 1.4,minW,minH,min_scale);
 			//rects=generateRect(image, 2, 1.2);//this is too much make rects
 			rectsMap.put(fileName, ListUtils.shuffle(rects));
 		}
