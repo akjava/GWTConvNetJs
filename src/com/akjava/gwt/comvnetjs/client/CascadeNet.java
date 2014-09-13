@@ -147,7 +147,15 @@ public VolFilter(CascadeNet cnet,int index){
 
 boolean useMinRate;
 
-
+public static boolean isZeroIndexMostMatched(Vol result){
+	double first=result.getW(0);
+	for(int i=1;i<result.getLength();i++){
+		if(first<result.getW(i)){
+			return false;
+		}
+	}
+	return true;
+}
 
 public boolean isUseMinRate() {
 	return useMinRate;

@@ -192,7 +192,7 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 					@Override
 					public void executeOnClick() {
 						ImageElementUtils.copytoCanvas(imageDataUrl, imageShowingCanvas);
-						getLastCascade().setMinRate(minRateBox.getValue());
+					//	getLastCascade().setMinRate(minRateBox.getValue());
 						detectImage(imageShowingCanvas,detectStepSize.getValue(),detectScaleFactor.getValue());
 					}
 				};
@@ -334,7 +334,7 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 		//loadInitialJson(); //right now no need because setting so changed.
 		
 		
-		createMinRateBox();
+	//	createMinRateBox();
 		//root.add(minRateBox); //right now stop using this.because now 1pos & 4 neg classes
 
 		Button bt2b=new Button("Do Test Last Cascade first 100 item Passed parent filters Vol",new ClickHandler() {
@@ -821,7 +821,7 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 
 			@Override
 			public void executeOnClick() {
-				getLastCascade().setMinRate(minRateBox.getValue());
+			//	getLastCascade().setMinRate(minRateBox.getValue());
 				autoRepeatCancel=false;
 				
 				final double targetRate=matchRateBox.getValue();
@@ -887,7 +887,7 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 
 			@Override
 			public void executeOnClick() {
-				getLastCascade().setMinRate(minRateBox.getValue());
+			//	getLastCascade().setMinRate(minRateBox.getValue());
 				
 				//re-train last trained for improve
 				doRepeat(false);
@@ -902,7 +902,7 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 
 			@Override
 			public void executeOnClick() {
-				getLastCascade().setMinRate(minRateBox.getValue());
+			//	getLastCascade().setMinRate(minRateBox.getValue());
 				
 				//re-train last trained for improve
 				doRepeat(true);
@@ -938,7 +938,7 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 
 			@Override
 			public void executeOnClick() {
-				getLastCascade().setMinRate(minRateBox.getValue());
+				//getLastCascade().setMinRate(minRateBox.getValue());
 				
 				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
 				doTrain(v,true);
@@ -952,7 +952,7 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 
 			@Override
 			public void executeOnClick() {
-				getLastCascade().setMinRate(minRateBox.getValue());
+				//getLastCascade().setMinRate(minRateBox.getValue());
 				
 				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
 				doTrain(v,false,true);
@@ -973,7 +973,7 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 
 			@Override
 			public void executeOnClick() {
-				getLastCascade().setMinRate(minRateBox.getValue());
+				//getLastCascade().setMinRate(minRateBox.getValue());
 				
 				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
 				doTrain(v,true);//offsetRectContinueIndex initialized here
@@ -996,7 +996,7 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 
 			@Override
 			public void executeOnClick() {
-				getLastCascade().setMinRate(minRateBox.getValue());
+				//getLastCascade().setMinRate(minRateBox.getValue());
 				
 				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
 				doTrain(v,true);//offsetRectContinueIndex initialized here
@@ -1019,7 +1019,7 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 
 			@Override
 			public void executeOnClick() {
-				getLastCascade().setMinRate(minRateBox.getValue());
+				//getLastCascade().setMinRate(minRateBox.getValue());
 				
 				int v=Integer.parseInt(list.getValue(list.getSelectedIndex()));
 				doTrain(v,false);
@@ -1541,6 +1541,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 		});
 	}
 
+	/*
 	private void createMinRateBox() {
 
 		List<Double> doubles=Lists.newArrayList();
@@ -1566,6 +1567,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 		minRateBox.setAcceptableValues(doubles);
 		
 	}
+	*/
 
 	private void loadInitialJson() {
 		try {
@@ -1595,12 +1597,12 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 
 	protected void addNewCascade() {
 		//handle min-rate first
-		double minRate=minRateBox.getValue();
-		minrateValues.add(minRate);
+		//double minRate=minRateBox.getValue();
+		//minrateValues.add(minRate);
 		
-		getLastCascade().setMinRate(minRate);
+		//getLastCascade().setMinRate(minRate);
 		
-		minRateBox.setValue(0.5);
+		//minRateBox.setValue(0.5);
 		
 		
 		CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),createNewNet(),null);
@@ -1806,6 +1808,35 @@ protected void doRepeat(boolean initial) {
 		LogUtils.log("trained-positive:"+trained+ " negative="+negative+" ignored="+ignored+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
 	}
 
+	
+	public static Optional<List<CascadeNet>> createCascadesFromJson(String text){
+		JSONValue value=JSONParser.parseStrict(text);
+		JSONObject object=value.isObject();
+		
+		//parse nets
+		JSONValue netsValue=object.get("nets");
+		
+		JSONArray array=netsValue.isArray();
+		if(array==null){
+			return Optional.absent();
+		}
+		
+		
+		List<CascadeNet> cascades=Lists.newArrayList();
+		for(int i=0;i<array.size();i++){
+			JSONValue arrayValue=array.get(i);
+			String jsonText=arrayValue.toString();
+			
+			CascadeNet parent=null;
+			if(cascades.size()>0){
+				parent=cascades.get(cascades.size()-1);
+			}
+			cascades.add(new CascadeNet(parent, jsonText));
+		}
+		
+		return Optional.of(cascades);
+	}
+	
 	protected void fromJson(String text) {
 		cascades.clear();
 		
@@ -1835,6 +1866,8 @@ protected void doRepeat(boolean initial) {
 		}
 		LogUtils.log("nets:"+cascades.size()+" cascades");
 		//parse minrates
+		
+		/*
 		minrateValues.clear();
 		JSONValue minratesJSValue=object.get("minrates");
 		
@@ -1858,6 +1891,7 @@ protected void doRepeat(boolean initial) {
 			LogUtils.log(minrate);
 		}
 		LogUtils.log("current:"+minRateBox.getValue());
+		*/
 		
 		//parse dropped
 		droppedList.clear();
@@ -1894,7 +1928,7 @@ protected void doRepeat(boolean initial) {
 		cascadeLabel.setText("cascade-size:"+cascades.size());
 	}
 
-	List<Double> minrateValues=Lists.newArrayList();
+	//List<Double> minrateValues=Lists.newArrayList();
 	
 	protected String toJson() {
 		Joiner joiner=Joiner.on(",");
@@ -1916,10 +1950,10 @@ protected void doRepeat(boolean initial) {
 		}
 		objects.add("\"dropped\":["+joiner.join(files)+"]");
 		
-		List<Double> fvalues=Lists.newArrayList(minrateValues);
-		fvalues.add(minRateBox.getValue());
+		//List<Double> fvalues=Lists.newArrayList(minrateValues);
+		//fvalues.add(minRateBox.getValue());
 		
-		objects.add("\"minrates\":["+joiner.join(fvalues)+"]");
+		//objects.add("\"minrates\":["+joiner.join(fvalues)+"]");
 		
 		//
 		
@@ -2425,9 +2459,9 @@ protected void doRepeat(boolean initial) {
 		for(PassedData trainedData:trainedPositiveDatas){
 			
 			Vol vol=trainedData.getVol();
-			Vol vol2=getLastCascadesNet().forward(vol,true);
+			Vol result=getLastCascadesNet().forward(vol,true);
 			
-			if(vol2.getW(0)>minRateBox.getValue()){
+			if(CascadeNet.isZeroIndexMostMatched(result)){
 			//if(vol2.getW(0)>vol2.getW(1)){
 				successMatch++;
 				//successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
@@ -2736,7 +2770,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		int testNumber=100;
 		
 		
-		double minPositiveRate=minRateBox.getValue();
+		//double minPositiveRate=minRateBox.getValue();
 		if(testPositives){
 		for(int i=0;i<testNumber;i++){
 			CVImageData pdata=positivesZip.get(i);
@@ -2757,11 +2791,11 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 			
 			
-			Vol vol2=cascade.getNet().forward(vol);
+			Vol result=cascade.getNet().forward(vol);
 			if(i==0){
 			//	LogUtils.log("v:"+vol2.getW(0)+","+vol2.getW(1));
 			}
-			if(vol2.getW(0)>minPositiveRate){
+			if(CascadeNet.isZeroIndexMostMatched(result)){
 			//if(vol2.getW(0)>vol2.getW(1)){
 				successMatch++;
 				if(debugThumbImage){
@@ -2801,12 +2835,12 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		for(int i=0;i<testNumber;i++){
 			String imageDataUrl=passedVols.get(i).getDataUrl();
 			Vol vol=passedVols.get(i).getVol();
-			Vol value= cascade.getNet().forward(vol,true);//i'm not sure trained true no effect on result,i guess this mean use just cached inside
+			Vol result= cascade.getNet().forward(vol,true);//i'm not sure trained true no effect on result,i guess this mean use just cached inside
 			if(i==0){
 			//LogUtils.log(vol);
 			//LogUtils.log(value);
 			}
-			if(value.getW(1)>(1.0-minPositiveRate)){
+			if(!CascadeNet.isZeroIndexMostMatched(result)){
 			//if(value.getW(1)>value.getW(0)){
 				if(debugThumbImage){
 				successNegativesPanel.add(new Image(imageDataUrl));
@@ -3015,7 +3049,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	
 	boolean isAllImageGrayscale=true;
 
-	private ValueListBox<Double> minRateBox;
+	//private ValueListBox<Double> minRateBox;
 
 	private Label variationLevelLabel;
 
