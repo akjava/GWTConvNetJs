@@ -21,6 +21,7 @@
 <inherits name="com.akjava.gwt.common.Common" />
 	 <inherits name='com.akjava.gwt.jszip.GWTJSZip'/>
 	      <inherits name="com.google.gwt.json.JSON" />
+	      <inherits name='com.akjava.gwt.webworker.WebWorker'/>
   <!-- Specify the app entry point class.                         -->
   <entry-point class='com.akjava.gwt.comvnetjs.client.GWTConvNetJs'/>
 

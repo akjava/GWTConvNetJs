@@ -1,7 +1,6 @@
 package com.akjava.gwt.comvnetjs.client;
 
 import com.google.gwt.core.client.JavaScriptObject;
-import com.google.gwt.json.client.JSONValue;
 
 public class Net extends JavaScriptObject{
 protected Net(){}

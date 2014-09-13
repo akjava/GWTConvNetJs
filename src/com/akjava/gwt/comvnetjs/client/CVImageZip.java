@@ -1,11 +1,8 @@
 package com.akjava.gwt.comvnetjs.client;
 
-import static com.google.common.base.Preconditions.checkState;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 import com.akjava.gwt.html5.client.file.Uint8Array;
 import com.akjava.gwt.jszip.client.JSFile;
@@ -13,14 +10,13 @@ import com.akjava.gwt.jszip.client.JSZip;
 import com.akjava.gwt.lib.client.Base64Utils;
 import com.akjava.gwt.lib.client.ImageElementUtils;
 import com.akjava.gwt.lib.client.LogUtils;
-import com.akjava.gwt.lib.client.experimental.opencv.CVImageDataConverter;
 import com.akjava.gwt.lib.client.experimental.opencv.CVImageData;
+import com.akjava.gwt.lib.client.experimental.opencv.CVImageDataConverter;
 import com.akjava.lib.common.io.FileType;
 import com.akjava.lib.common.utils.CSVUtils;
 import com.akjava.lib.common.utils.FileNames;
 import com.akjava.lib.common.utils.ListUtils;
 import com.google.common.base.Optional;
-import com.google.common.base.Stopwatch;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.Lists;
 import com.google.gwt.core.client.JsArrayString;
@@ -32,7 +28,7 @@ public static final int POSITIVES=0;
 public static final int NEGATIVES=1;
 public static final int IMAGES=2;
 public int type;
-private Map<String,String> cachedImageElement=new HashMap<String, String>();
+private Map<String,String> cachedImageDataUrls=new HashMap<String, String>();
 private boolean useCache=true;//default true
 private JSZip zip;
 private String name="";
@@ -74,7 +70,7 @@ public Optional<ImageElement> getImageElement(CVImageData data){
 	ImageElement image=null;
 	
 	if(useCache){//use cache really consume browser memory.take care
-		String url=cachedImageElement.get(data.getFileName());
+		String url=cachedImageDataUrls.get(data.getFileName());
 	if(url!=null){
 		image=ImageElementUtils.create(url.toString());
 		}
@@ -104,7 +100,7 @@ public Optional<ImageElement> getImageElement(CVImageData data){
 		
 		
 		if(useCache){
-			cachedImageElement.put(data.getFileName(), dataUrl);
+			cachedImageDataUrls.put(data.getFileName(), dataUrl);
 		}
 	}
 	return Optional.of(image);
@@ -184,7 +180,10 @@ public CVImageData get(int index){
 	}
 	
 	public void clearCache(){
-		cachedImageElement.clear();
+		cachedImageDataUrls.clear();
+	}
+	public void putCache(String name,String dataUrl){
+		cachedImageDataUrls.put(name, dataUrl);
 	}
 	
 	private boolean isImageFile(String name){

@@ -21,6 +21,7 @@ import com.akjava.gwt.html5.client.file.File;
 import com.akjava.gwt.html5.client.file.FileUploadForm;
 import com.akjava.gwt.html5.client.file.FileUtils;
 import com.akjava.gwt.html5.client.file.FileUtils.DataURLListener;
+import com.akjava.gwt.html5.client.file.Uint8Array;
 import com.akjava.gwt.jszip.client.JSFile;
 import com.akjava.gwt.jszip.client.JSZip;
 import com.akjava.gwt.lib.client.Base64Utils;
@@ -38,6 +39,10 @@ import com.akjava.gwt.lib.client.experimental.opencv.CVImageData;
 import com.akjava.gwt.lib.client.widget.PanelUtils;
 import com.akjava.gwt.lib.client.widget.cell.EasyCellTableObjects;
 import com.akjava.gwt.lib.client.widget.cell.SimpleCellTable;
+import com.akjava.gwt.webworker.client.WorkerPool;
+import com.akjava.gwt.webworker.client.WorkerPool.Uint8WorkerPoolData;
+import com.akjava.gwt.webworker.client.WorkerPool.WorkerPoolData;
+import com.akjava.gwt.webworker.client.WorkerPoolMultiCaller;
 import com.akjava.lib.common.graphics.Rect;
 import com.akjava.lib.common.io.FileType;
 import com.akjava.lib.common.utils.FileNames;
@@ -98,6 +103,7 @@ import com.google.gwt.user.client.ui.RootLayoutPanel;
 import com.google.gwt.user.client.ui.ScrollPanel;
 import com.google.gwt.user.client.ui.ValueListBox;
 import com.google.gwt.user.client.ui.VerticalPanel;
+import com.google.gwt.webworker.client.MessageEvent;
 
 /**
  * Entry point classes define <code>onModuleLoad()</code>.
@@ -1295,7 +1301,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	@Override
 	public void onLoadBinaryFile(ArrayBuffer buffer) {
 		
-		Stopwatch watch=Stopwatch.createStarted();
+		final Stopwatch watch=Stopwatch.createStarted();
 	
 		negativesZip=new CVImageZip(buffer);
 		negativesZip.setUseCache(true);
@@ -1303,9 +1309,71 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		negativesZip.shuffle();//negative file need shuffle?
 		checkState(negativesZip.size()>0,"some how empty zip or index/bg");
 		
-		LogUtils.log(getNegativeInfo());
+		LogUtils.log("pre-extract-time:"+watch.elapsed(TimeUnit.SECONDS)+"s");
+		watch.reset();watch.start();
+		final List<CVImageData> datas=Lists.newArrayList(negativesZip.getDatas());
 		
-		LogUtils.log("load negatives from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
+		
+		WorkerPool workerPool=new WorkerPool(24,"/workers/uint8tobase64.js") {
+			int extracted;
+			@Override
+			public void extractData(WorkerPoolData data, MessageEvent event) {
+				String base64=event.getDataAsString();
+				extracted++;
+				
+				
+				
+				for(FileType type:FileType.getFileTypeFromFileName(data.getParameterString("name")).asSet()){
+					String dataUrl=Base64Utils.toDataUrl(type.getMimeType(),base64);
+					negativesZip.putCache(data.getParameterString("name"), dataUrl);
+					
+					//how to catch all data extracted.
+					if(extracted==negativesZip.getDatas().size()){
+						LogUtils.log(getNegativeInfo());
+						LogUtils.log("load negatives from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+					}
+					
+					return;
+				}
+				
+				LogUtils.log("invalid name for convert base64 imagee:"+data.getParameterString("name"));
+				
+			}
+		};
+		
+		WorkerPoolMultiCaller<CVImageData> multiCaller=new WorkerPoolMultiCaller<CVImageData>(workerPool,datas) {
+
+			@Override
+			public WorkerPoolData convertToData(CVImageData data) {
+				JSFile file=negativesZip.getZip().getFile(data.getFileName());
+				Uint8Array array=file.asUint8Array();
+				Uint8WorkerPoolData poolData= new Uint8WorkerPoolData(array.convertToNative(),false);
+				poolData.setParameterString("name", data.getFileName());
+				return poolData;
+			}
+			
+		};
+		multiCaller.start(10);
+		
+		/*
+		AsyncMultiCaller<CVImageData> preloader=new AsyncMultiCaller<CVImageData>(datas) {
+
+			@Override
+			public void doFinally(boolean cancelled) {
+				LogUtils.log(getNegativeInfo());
+				
+				LogUtils.log("load negatives from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
+				
+			}
+
+			@Override
+			public void execAsync(CVImageData data) {
+				negativesZip.getImageElement(data);
+				done(data,true);
+			}
+		};
+		preloader.startCall(1);
+		*/
 		
 	}
 	
@@ -2813,7 +2881,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	
 	private Map<String,List<Rect>> rectsMap=new HashMap<String, List<Rect>>();
 	
-	private boolean useRandom;
+	private boolean useRandom=true;//on first stage it's better use random
 	private ImageElement lastImageElement;
 	private CVImageData lastData;
 	public Optional<Vol> createRandomVol(){
