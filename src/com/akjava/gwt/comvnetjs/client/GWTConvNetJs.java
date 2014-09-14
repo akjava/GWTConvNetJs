@@ -2,7 +2,6 @@ package com.akjava.gwt.comvnetjs.client;
 
 import static com.google.common.base.Preconditions.checkState;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -16,6 +15,8 @@ import com.akjava.gwt.comvnetjs.client.StageControler.PhaseData;
 import com.akjava.gwt.comvnetjs.client.StageControler.Score;
 import com.akjava.gwt.comvnetjs.client.StageControler.ScoreGroup;
 import com.akjava.gwt.comvnetjs.client.StageControler.StageResult;
+import com.akjava.gwt.comvnetjs.client.worker.DetectParam;
+import com.akjava.gwt.comvnetjs.client.worker.HaarRect;
 import com.akjava.gwt.comvnetjs.client.worker.MakeRectParam;
 import com.akjava.gwt.html5.client.download.HTML5Download;
 import com.akjava.gwt.html5.client.file.File;
@@ -25,16 +26,19 @@ import com.akjava.gwt.html5.client.file.FileUtils.DataURLListener;
 import com.akjava.gwt.html5.client.file.Uint8Array;
 import com.akjava.gwt.jszip.client.JSFile;
 import com.akjava.gwt.jszip.client.JSZip;
+import com.akjava.gwt.lib.client.ArrayUtils;
 import com.akjava.gwt.lib.client.Base64Utils;
 import com.akjava.gwt.lib.client.BrowserUtils;
 import com.akjava.gwt.lib.client.BrowserUtils.LoadBinaryListener;
 import com.akjava.gwt.lib.client.CanvasUtils;
 import com.akjava.gwt.lib.client.ImageElementUtils;
+import com.akjava.gwt.lib.client.JavaScriptUtils;
 import com.akjava.gwt.lib.client.LogUtils;
 import com.akjava.gwt.lib.client.experimental.ExecuteButton;
 import com.akjava.gwt.lib.client.experimental.RectCanvasUtils;
 import com.akjava.gwt.lib.client.experimental.ToStringValueListBox;
 import com.akjava.gwt.lib.client.experimental.lbp.ByteImageDataIntConverter;
+import com.akjava.gwt.lib.client.experimental.lbp.ByteImageDataIntConverter.ImageDataToByteFunction;
 import com.akjava.gwt.lib.client.experimental.lbp.SimpleLBP;
 import com.akjava.gwt.lib.client.experimental.opencv.CVImageData;
 import com.akjava.gwt.lib.client.widget.PanelUtils;
@@ -61,6 +65,7 @@ import com.google.gwt.canvas.dom.client.ImageData;
 import com.google.gwt.core.client.EntryPoint;
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.core.client.JavaScriptObject;
+import com.google.gwt.core.client.JsArray;
 import com.google.gwt.core.client.JsArrayString;
 import com.google.gwt.dom.client.ImageElement;
 import com.google.gwt.dom.client.Style.Unit;
@@ -80,12 +85,10 @@ import com.google.gwt.http.client.RequestException;
 import com.google.gwt.http.client.Response;
 import com.google.gwt.i18n.client.NumberFormat;
 import com.google.gwt.json.client.JSONArray;
-import com.google.gwt.json.client.JSONNumber;
 import com.google.gwt.json.client.JSONObject;
 import com.google.gwt.json.client.JSONParser;
 import com.google.gwt.json.client.JSONString;
 import com.google.gwt.json.client.JSONValue;
-import com.google.gwt.text.shared.Renderer;
 import com.google.gwt.typedarrays.shared.ArrayBuffer;
 import com.google.gwt.user.cellview.client.CellTable;
 import com.google.gwt.user.cellview.client.TextColumn;
@@ -104,9 +107,9 @@ import com.google.gwt.user.client.ui.ListBox;
 import com.google.gwt.user.client.ui.Panel;
 import com.google.gwt.user.client.ui.RootLayoutPanel;
 import com.google.gwt.user.client.ui.ScrollPanel;
-import com.google.gwt.user.client.ui.ValueListBox;
 import com.google.gwt.user.client.ui.VerticalPanel;
 import com.google.gwt.webworker.client.MessageEvent;
+import com.google.gwt.webworker.client.MessagePort;
 import com.google.gwt.webworker.client.Worker;
 
 /**
@@ -153,7 +156,7 @@ public class GWTConvNetJs implements EntryPoint {
 		fromJson(lastJson);
 	}
 	
-	private static Canvas lbpCanvas=Canvas.createIfSupported();//
+	private  Canvas lbpCanvas=Canvas.createIfSupported();//
 	
 	private String imageDataUrl;
 	public class LBPImageZip extends CVImageZip{
@@ -194,9 +197,23 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 						ImageElementUtils.copytoCanvas(imageDataUrl, imageShowingCanvas);
 					//	getLastCascade().setMinRate(minRateBox.getValue());
 						detectImage(imageShowingCanvas,detectStepSize.getValue(),detectScaleFactor.getValue());
+						//detectImageWithWorker(imageShowingCanvas,detectStepSize.getValue(),detectScaleFactor.getValue());
 					}
 				};
 				detectBt.setEnabled(false);
+				
+				
+final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
+					
+					@Override
+					public void executeOnClick() {
+						ImageElementUtils.copytoCanvas(imageDataUrl, imageShowingCanvas);//clear rects
+					//	getLastCascade().setMinRate(minRateBox.getValue());
+						//detectImage(imageShowingCanvas,detectStepSize.getValue(),detectScaleFactor.getValue());
+						detectImageWithWorker(imageShowingCanvas,detectStepSize.getValue(),detectScaleFactor.getValue());
+					}
+				};
+				
 				
 				FileUploadForm imageUpload= FileUtils.createSingleFileUploadForm(new DataURLListener() {
 					
@@ -255,7 +272,7 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 				root.add(imageShowingCanvas);
 				root.add(topImageControlPanel);
 				
-				
+				topImageControlPanel.add(detectWorkerBt);
 				topImageControlPanel.add(detectBt);
 				topImageControlPanel.add(new Label("select image(after that detection start automatic) recommend around 250x250.otherwise take too mauch time"));
 				topImageControlPanel.add(imageUpload);
@@ -1809,16 +1826,43 @@ protected void doRepeat(boolean initial) {
 	}
 
 	
-	public static Optional<List<CascadeNet>> createCascadesFromJson(String text){
-		JSONValue value=JSONParser.parseStrict(text);
+	public static class DetectionData{
+		private List<CascadeNet> cascades=Lists.newArrayList();
+		public List<CascadeNet> getCascades() {
+			return cascades;
+		}
+		public DetectionData(List<CascadeNet> cascades, Set<String> droppedList) {
+			super();
+			this.cascades = cascades;
+			this.droppedList = droppedList;
+		}
+		public Set<String> getDroppedList() {
+			return droppedList;
+		}
+		private Set<String> droppedList=Sets.newHashSet();//for future study
+		
+	}
+	
+	public static Optional<DetectionData> createDetectionDataFromJson(String text){
+		if(text==null || text.isEmpty()){
+			return Optional.absent();
+		}
+		//this happend in webworker Uncaught com.google.gwt.json.client.JSONException: com.google.gwt.core.client.JavaScriptException: (TypeError) : Expecting a function in instanceof check, but got undefined 
+		JSONValue value=JSONParser.parseStrict(text);//don't work on WebWorker(prj.gwtwwlinker) both parseLenient
+		//JSONValue value=JSONParser.parseLenient(text);
 		JSONObject object=value.isObject();
+		
+		if(object==null){
+			return Optional.absent();
+		}
 		
 		//parse nets
 		JSONValue netsValue=object.get("nets");
 		
 		JSONArray array=netsValue.isArray();
 		if(array==null){
-			return Optional.absent();
+			LogUtils.log("seems invalid cascade-json type:no nets array");
+			//return Optional.absent();
 		}
 		
 		
@@ -1834,7 +1878,24 @@ protected void doRepeat(boolean initial) {
 			cascades.add(new CascadeNet(parent, jsonText));
 		}
 		
-		return Optional.of(cascades);
+		
+		 Set<String> droppedList=Sets.newHashSet();
+		 JSONValue droppedValue=object.get("dropped");
+			
+			JSONArray droppedArray=droppedValue.isArray();
+			if(droppedArray==null){
+				LogUtils.log("seems invalid cascade-json type:no dropped array");
+				//return Optional.absent();
+			}
+			for(int i=0;i<droppedArray.size();i++){
+				JSONValue arrayValue=droppedArray.get(i);
+				JSONString string=arrayValue.isString();
+				String jsonText=string.stringValue();
+				
+				droppedList.add(jsonText);
+			}
+	
+		return Optional.of(new DetectionData(cascades,droppedList));
 	}
 	
 	protected void fromJson(String text) {
@@ -2022,9 +2083,12 @@ protected void doRepeat(boolean initial) {
 	
 	 static final SimpleLBP lbpConverter=new SimpleLBP(true, 2);//
 	
-	int count=0;
+	int detectCount=0;
 	List<ConfidenceRect> mutchRect=Lists.newArrayList();
-	static ByteImageDataIntConverter byteDataIntConverter=new ByteImageDataIntConverter(Canvas.createIfSupported().getContext2d(),true);
+	
+	static ImageDataToByteFunction imageDataToByteFunctionGrayscale=new ImageDataToByteFunction(false);
+	static ImageDataToByteFunction imageDataToByteFunction=new ImageDataToByteFunction(true);
+	 ByteImageDataIntConverter byteDataIntConverter=new ByteImageDataIntConverter(Canvas.createIfSupported().getContext2d(),true);
 	/**
 	 * 
 	 * @param canvas
@@ -2037,7 +2101,142 @@ protected void doRepeat(boolean initial) {
 	 */
 	
 	
+	private List<ImageData> createImageDatas(Canvas imageCanvas,List<Rect> rects){
+		List<ImageData> result=Lists.newArrayList();
+		for(Rect rect:rects){
+		RectCanvasUtils.crop(imageCanvas, rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight(), sharedCanvas);
+		
+		CanvasUtils.clear(resizedCanvas);//for transparent image
+		resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
+		
+		result.add(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+		
+		}
+		
+		return result;
+		
+	}
+	
+	private static Stopwatch bench1=Stopwatch.createUnstarted();
+	private static  Stopwatch bench2=Stopwatch.createUnstarted();
+	private static  Stopwatch bench3=Stopwatch.createUnstarted();
+	private static  Stopwatch bench4=Stopwatch.createUnstarted();
+	private static  Stopwatch bench5=Stopwatch.createUnstarted();
+	
+	private void detectImageWithWorker(final Canvas canvas,int stepScale,double scale_factor){
+		final Stopwatch watch=Stopwatch.createStarted();
+		final Stopwatch watch2=Stopwatch.createUnstarted();
+		final int totalSize=10;
+		final List<JsArray<HaarRect>> result=Lists.newArrayList();
+		final StringBuffer createImageDataLogBuffer=new StringBuffer();
+		final String json=toJson();
+		
+		String option="?"+System.currentTimeMillis();
+		WorkerPool workerPool=new WorkerPool(totalSize,"/detect/worker.js"+option) {
+			int extracted;
+			@Override
+			public void extractData(WorkerPoolData data, MessageEvent event) {
+				JsArray<HaarRect> rects=event.getDataAsJavaScriptObject().cast();
+				result.add(rects);
+				extracted++;
+				
+				
+				
+				if(extracted==totalSize){
+					int match=0;
+					LogUtils.log("detect-time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+					 canvas.getContext2d().setStrokeStyle("#888");
+					
+					//TODO should sort?
+					for(JsArray<HaarRect> array:result){
+					 for(int i=0;i<array.length();i++){
+						 HaarRect r=array.get(i);
+						 	
+						 	//LogUtils.log(r);
+				        	RectCanvasUtils.strokeCircle(canvas,r.getX(),r.getY(),r.getWidth(),r.getHeight(), true);
+				        	match++;
+				        }
+					}
+					LogUtils.log("match-count:"+match);
+					LogUtils.log("create-image-data-time:"+watch2.elapsed(TimeUnit.MILLISECONDS)+" "+createImageDataLogBuffer.toString());
+				}
+				
+			}
+		};
+		int minW=detectWidth.getValue();
+		int minH=detectHeight.getValue();
+		double min_scale=detectInitialScale.getValue();
+		
+		checkState(minW>0 && minH>0,"invaid detect-size:"+minW+"x"+minH);
+		
+		
+		
+		
+				
+		List<Rect> rects=RectGenerator.generateRect(canvas.getCoordinateSpaceWidth(),canvas.getCoordinateSpaceHeight(), stepScale, scale_factor,minW,minH,min_scale);
+		
+		
+		
+		createImageDataLogBuffer.append("rects="+rects.size()+",image="+canvas.getCoordinateSpaceWidth()+"x"+canvas.getCoordinateSpaceHeight());
+		
+		
+		
+		int eachSize=rects.size()/totalSize;
+		if(rects.size()%totalSize>0){
+			eachSize++;
+		}
+		
+		List<List<Rect>> partitioned=Lists.partition(rects, eachSize);
+		
+				
+		WorkerPoolMultiCaller<List<Rect>> multiCaller=new WorkerPoolMultiCaller<List<Rect>>(workerPool,partitioned) {
+			
+			@Override
+			public WorkerPoolData convertToData(List<Rect> data) {
+				watch2.start();
+				List<ImageData> imageDataList=createImageDatas(canvas, data);
+				watch2.stop();
+				JsArray<ImageData> array= JavaScriptUtils.toArray(imageDataList);
+				
+				final DetectParam param=DetectParam.create(json, array, data);
+				final JavaScriptObject transfers=DetectParam.toTransfer(array);
+				
+				WorkerPoolData poolData=new WorkerPoolData(){
+
+					@Override
+					public String getParameterString(String key) {
+						// TODO Auto-generated method stub
+						return null;
+					}
+
+					@Override
+					public void postData(Worker worker) {
+						
+						JsArray<MessagePort> ports=transfers.cast();
+						//worker.postMessage(param);
+						worker.postMessage(param,ports);
+						//LogUtils.log("data-length:"+param.getImageDatas().get(0).getData().getLength());
+						//
+					}
+				};
+				
+				return poolData;
+			}
+			
+		};
+		multiCaller.start(10);
+		
+	}
+	
+	
 	protected void detectImage(Canvas canvas,int stepScale,double scale_factor) {
+		bench1.reset();
+		bench2.reset();
+		bench3.reset();
+		bench4.reset();
+		bench5.reset();
+		
+		detectCount=0;
 		Stopwatch watch=Stopwatch.createStarted();
 		if(cascades.size()<1){
 			Window.alert("loas positive and make cascadeNets!exit.");
@@ -2065,7 +2264,14 @@ protected void doRepeat(boolean initial) {
 		
 		//ImageData imageData=byteDataIntConverter.reverse().convert(lbpConverter.convert(bytes));
 		//CanvasUtils.createCanvas(grayscaleCanvasForDetector, imageData);
+		
+		//i think no need convert grayscale
+		
+		
 		CanvasUtils.convertToGrayScale(canvas, grayscaleCanvasForDetector);
+		
+		
+		//CanvasUtils.copyTo(canvas, grayscaleCanvasForDetector);//just copy no grayscale
 		
 		
 		//grayscaleCanvas=CanvasUtils.copyTo(canvas, grayscaleCanvas, true);//test image is LBP just copy here
@@ -2075,7 +2281,7 @@ protected void doRepeat(boolean initial) {
 			detectImage(minW,minH,stepScale,min_scale,grayscaleCanvasForDetector);
 			min_scale*=scale_factor;
 		}
-		LogUtils.log("try:"+count+",mutch:"+mutchRect.size()+","+watch.elapsed(TimeUnit.SECONDS)+"s");
+		LogUtils.log("try:"+detectCount+",mutch:"+mutchRect.size()+","+watch.elapsed(TimeUnit.SECONDS)+"s");
 		
 		Collections.sort(mutchRect);
 		canvas.getContext2d().setStrokeStyle("rgba(255,0,0,1)");
@@ -2092,6 +2298,8 @@ protected void doRepeat(boolean initial) {
 			 	}
 	        	RectCanvasUtils.strokeCircle(r, canvas, true);;
 	        }
+		 
+		 LogUtils.log("imageDataToByteFunction:"+bench1.elapsed(TimeUnit.MILLISECONDS)+",lbpConverter:"+bench2.elapsed(TimeUnit.MILLISECONDS)+",createNewVol:"+bench3.elapsed(TimeUnit.MILLISECONDS)+",dataToBinaryPattern:"+bench4.elapsed(TimeUnit.MILLISECONDS)+",128-1:"+bench5.elapsed(TimeUnit.MILLISECONDS));
 	}
 	
 
@@ -2133,8 +2341,8 @@ protected void doRepeat(boolean initial) {
         double step_y = step_x;
         
         Rect sharedRect=new Rect(0,0,winW,winH);
-        int endX=imageCanvas.getCoordinateSpaceWidth()-minW;
-        int endY=imageCanvas.getCoordinateSpaceHeight()-minH;
+        int endX=imageCanvas.getCoordinateSpaceWidth()-winW;
+        int endY=imageCanvas.getCoordinateSpaceHeight()-winH;
         
         
         for(double x=0;x<endX;x+=step_x){
@@ -2149,10 +2357,13 @@ protected void doRepeat(boolean initial) {
         		//now cropped image into sharedCanvas
         		
 				CanvasUtils.clear(resizedCanvas);//for transparent image
+				
 				resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
 				
+				//#RectCanvasUtils.cropAndResize(imageCanvas,rect,w,h,sharedCanvas,clearBeforedraw);//if use transparent or something
+			
 				//this must extreamly slow
-				Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+				Vol vol=createVolFromGrayscaleImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 				
 				//Vol vol=ConvnetJs.createGrayVolFromGrayScaleImage(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 				
@@ -2168,7 +2379,7 @@ protected void doRepeat(boolean initial) {
         			mutchRect.add(conf);
 				}
 				
-				count++;
+				detectCount++;
         		//detect
         		
         	}
@@ -3064,14 +3275,18 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	private StageControler stageControler;
 
 	private Canvas testCanvas;
-	private static Vol createVolFromImageData(ImageData imageData){
+	public static Vol createVolFromImageData(ImageData imageData){
 		//return createGrayscaleImageVolFromImageData(imageData);
-		return createLBPDepthVolFromImageData(imageData);
+		return createLBPDepthVolFromImageData(imageData,true);
+	}
+	public static Vol createVolFromGrayscaleImageData(ImageData imageData){
+		//return createGrayscaleImageVolFromImageData(imageData);
+		return createLBPDepthVolFromImageData(imageData,false);
 	}
 	private static  Vol createNewVol(){
 		return ConvnetJs.createVol(1, 1, 8*lbpDataSplit*lbpDataSplit, 0);
 	}
-	private static Vol createLBPDepthVolFromImageData(ImageData imageData){
+	private static Vol createLBPDepthVolFromImageData(ImageData imageData,boolean color){
 		if(imageData.getWidth()!=netWidth+edgeSize || imageData.getHeight()!=netHeight+edgeSize){ //somehow still 26x26 don't care!
 			Window.alert("invalid size:"+imageData.getWidth()+","+imageData.getHeight()+" expected "+(netWidth+edgeSize)+"x"+(netHeight+edgeSize));
 			return null;
@@ -3081,12 +3296,28 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		//simple lbp return 8 data
 		
 		//LBP here,now no effect on but edge problem possible happen
-		int[][] ints=byteDataIntConverter.convert(imageData); //convert color image to grayscale data
+		
+		
+		bench1.start();
+		int[][] ints=null;
+		if(color){
+			ints=imageDataToByteFunction.apply(imageData); 
+		}else{
+			ints=imageDataToByteFunctionGrayscale.apply(imageData); 
+		}
+		bench1.stop();
+		bench2.start();
+		//int[][] ints=byteDataIntConverter.convert(imageData); //convert color image to grayscale data
 		int[][] data=lbpConverter.convert(ints);
+		bench2.stop();
 		
+		bench3.start();
 		Vol vol=createNewVol();
-		
+		bench3.stop();
+		bench4.start();
 		int[] retInt=BinaryPattern.dataToBinaryPattern(data,lbpDataSplit,edgeSize,edgeSize);
+		bench4.stop();
+		bench5.start();
 		//set vol
 		for(int i=0;i<retInt.length;i++){
 			double v=(double)retInt[i]/128-1; //max valu is 16x16(256) to range(-1 - 1)
@@ -3103,7 +3334,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			//
 			//vol.set(0, 0,i,retInt[i]);//no normalize
 		}
-		
+		bench5.stop();
 		//int r=getRandom(0, 100);
 		//if(r==50){
 			//LogUtils.log(Ints.join(",", retInt));
