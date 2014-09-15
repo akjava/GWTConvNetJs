@@ -15,6 +15,7 @@ import com.akjava.gwt.comvnetjs.client.StageControler.PhaseData;
 import com.akjava.gwt.comvnetjs.client.StageControler.Score;
 import com.akjava.gwt.comvnetjs.client.StageControler.ScoreGroup;
 import com.akjava.gwt.comvnetjs.client.StageControler.StageResult;
+import com.akjava.gwt.comvnetjs.client.worker.CropRectParam;
 import com.akjava.gwt.comvnetjs.client.worker.DetectParam;
 import com.akjava.gwt.comvnetjs.client.worker.HaarRect;
 import com.akjava.gwt.comvnetjs.client.worker.MakeRectParam;
@@ -26,7 +27,6 @@ import com.akjava.gwt.html5.client.file.FileUtils.DataURLListener;
 import com.akjava.gwt.html5.client.file.Uint8Array;
 import com.akjava.gwt.jszip.client.JSFile;
 import com.akjava.gwt.jszip.client.JSZip;
-import com.akjava.gwt.lib.client.ArrayUtils;
 import com.akjava.gwt.lib.client.Base64Utils;
 import com.akjava.gwt.lib.client.BrowserUtils;
 import com.akjava.gwt.lib.client.BrowserUtils.LoadBinaryListener;
@@ -35,8 +35,10 @@ import com.akjava.gwt.lib.client.ImageElementUtils;
 import com.akjava.gwt.lib.client.JavaScriptUtils;
 import com.akjava.gwt.lib.client.LogUtils;
 import com.akjava.gwt.lib.client.experimental.ExecuteButton;
+import com.akjava.gwt.lib.client.experimental.ImageDataUtils;
 import com.akjava.gwt.lib.client.experimental.RectCanvasUtils;
 import com.akjava.gwt.lib.client.experimental.ToStringValueListBox;
+import com.akjava.gwt.lib.client.experimental.lbp.BinaryPattern;
 import com.akjava.gwt.lib.client.experimental.lbp.ByteImageDataIntConverter;
 import com.akjava.gwt.lib.client.experimental.lbp.ByteImageDataIntConverter.ImageDataToByteFunction;
 import com.akjava.gwt.lib.client.experimental.lbp.SimpleLBP;
@@ -89,6 +91,7 @@ import com.google.gwt.json.client.JSONObject;
 import com.google.gwt.json.client.JSONParser;
 import com.google.gwt.json.client.JSONString;
 import com.google.gwt.json.client.JSONValue;
+import com.google.gwt.typedarrays.client.Uint8ArrayNative;
 import com.google.gwt.typedarrays.shared.ArrayBuffer;
 import com.google.gwt.user.cellview.client.CellTable;
 import com.google.gwt.user.cellview.client.TextColumn;
@@ -305,7 +308,7 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 		cascades.add(new CascadeNet(null, createNewNet()));
 		
 		
-		final VerticalPanel mainPanel=PanelUtils.createScrolledVerticalPanel(dockRoot);
+		mainPanel = PanelUtils.createScrolledVerticalPanel(dockRoot);
 		mainPanel.add(createImageDetectionPanel());
 		
 		
@@ -394,7 +397,17 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 		});
 		mainPanel.add(saveAllBt);
 		
-		
+		createRandomVolCheck = new CheckBox("use random vol");
+		createRandomVolCheck.setValue(true);
+		createRandomVolCheck.addValueChangeHandler(new ValueChangeHandler<Boolean>() {
+
+			@Override
+			public void onValueChange(ValueChangeEvent<Boolean> event) {
+				useRandomOnCreateVol=event.getValue();
+			}
+			
+		});
+		mainPanel.add(createRandomVolCheck);
 		
 		mainPanel.add(createRepeatControls());
 		
@@ -1087,20 +1100,112 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 		return bottomPanel;
 	}
 	
+	WorkerPool testWorkerPool;
 	private HorizontalPanel cerateTestButtons() {
 		HorizontalPanel panel=new HorizontalPanel();
 
+		
+		
 		ExecuteButton execute=new ExecuteButton("Test1",false) {
-			
+			Stopwatch test1Watch=Stopwatch.createStarted();//share 1 worker pool
 			@Override
 			public void executeOnClick() {
+				test1Watch.reset();test1Watch.start();
+				ImageElement image=negativesZip.getImageElement(negativesZip.get(0)).get();
+				final Canvas canvas=CanvasUtils.createCanvas(image);
+				final ImageData imageData=ImageDataUtils.copyFrom(canvas);
+				final int w=imageData.getWidth()/2;
+				final int h=imageData.getHeight()/2;
+				
+				
+				
+				final int totalSize=1;
+				String option="?"+System.currentTimeMillis();//TODO default
+				
+				
+				if(testWorkerPool==null){
+					testWorkerPool=new WorkerPool(totalSize,"/workers/cropgrayscale.js"+option) {
+					int extracted;
+					@Override
+					public void doInitialize(){
+						extracted=0;
+					}
+					@Override
+					public void extractData(WorkerPoolData data, MessageEvent event) {
+						JsArray<Uint8ArrayNative> arrays=event.getDataAsJavaScriptObject().cast();
+						
+						extracted++;
+						
+						
+						
+						if(extracted==totalSize){
+							LogUtils.log("crop-time="+test1Watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+							 
+								for(int i=0;i<arrays.length();i++){
+								ImageData imageData=ImageDataUtils.createNoCopyWith(canvas,w, h);
+								ImageDataUtils.setGrayscale(imageData, arrays.get(i), true);
+								CanvasUtils.copyTo(imageData, canvas);
+								
+								mainPanel.add(new Image(canvas.toDataUrl()));
+								}
+							}
+						setEnabled(true);//button
+					}
+				};
+				}else{
+					testWorkerPool.doInitialize();
+				}
+				
+				JsArray<HaarRect> rects=JsArray.createArray().cast();
+				for(int x=0;x<2;x++){
+					for(int y=0;y<2;y++){
+						HaarRect rect=HaarRect.create(x*w, y*h, w, h);
+						rects.push(rect);
+					}
+				}
+				
+				List<JsArray<HaarRect>> rectsList=Lists.newArrayList();
+				rectsList.add(rects);
+				
+				WorkerPoolMultiCaller<JsArray<HaarRect>> multiCaller=new WorkerPoolMultiCaller<JsArray<HaarRect>>(testWorkerPool,rectsList) {
+					
+					@Override
+					public WorkerPoolData convertToData(JsArray<HaarRect> rects) {
+						
+						final CropRectParam param=CropRectParam.create(imageData,rects);
+						
+						WorkerPoolData poolData=new WorkerPoolData(){
+
+							//maybe no need
+							@Override
+							public String getParameterString(String key) {
+								// TODO Auto-generated method stub
+								return null;
+							}
+
+							@Override
+							public void postData(Worker worker) {
+								
+								worker.postMessage(param);
+							}
+						};
+						
+						return poolData;
+					}
+					
+				};
+				multiCaller.start(10);
+				
+				
+				
+				/*
 				Stopwatch watch=Stopwatch.createStarted();
 				List<Rect> rects=RectGenerator.generateRect(2000,2000, 4, 1.4,24,14,1.2);
 				LogUtils.log("rect-size:"+rects.size());
 				LogUtils.log("rect-time:"+watch.elapsed(TimeUnit.MILLISECONDS));
 				for(Rect rect:rects){
 					RectCanvasUtils.stroke(rect, testCanvas, "#000");
-				}
+				}*/
 				
 //				Canvas canvas=
 				
@@ -1768,7 +1873,7 @@ protected void doRepeat(boolean initial) {
 				if(horizontal){
 					CanvasUtils.drawToFlipHorizontal(sharedCanvas, resizedCanvas);
 				}else{
-					CanvasUtils.drawTo(sharedCanvas, resizedCanvas);
+					CanvasUtils.drawToWithDestSameSize(sharedCanvas, resizedCanvas);
 				}
 				
 				//resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
@@ -2123,16 +2228,140 @@ protected void doRepeat(boolean initial) {
 	private static  Stopwatch bench4=Stopwatch.createUnstarted();
 	private static  Stopwatch bench5=Stopwatch.createUnstarted();
 	
-	private void detectImageWithWorker(final Canvas canvas,int stepScale,double scale_factor){
+	
+	private void createGrayScaleImageDatas(final Canvas canvasToDrawResult,List<Rect> rects){
 		final Stopwatch watch=Stopwatch.createStarted();
 		final Stopwatch watch2=Stopwatch.createUnstarted();
-		final int totalSize=10;
+		final int totalSize=1;
+		int eachSize=rects.size()/totalSize;
+		
+		if(rects.size()%totalSize>0){
+			eachSize++;
+		}
+		
+		final List<List<Rect>> partitioned=Lists.partition(rects, eachSize);
+		final Map<String,List<Rect>> tmpMap=new HashMap<String, List<Rect>>();
+		
+		
+		WorkerPool cropImageWorkerPool=new WorkerPool(totalSize,"/workers/cropgrayscale.js") {
+			int extracted;
+			
+			List<Uint8ArrayNative> uintArray=Lists.newArrayList();
+			List<Rect> rectArray=Lists.newArrayList();
+			@Override
+			public void doInitialize(){
+				extracted=0;
+			}
+			@Override
+			public void extractData(WorkerPoolData data, MessageEvent event) {
+				
+				List<Rect> rects=tmpMap.get(data.getParameterString(null));
+				rectArray.addAll(rects);
+				
+				JsArray<Uint8ArrayNative> arrays=event.getDataAsJavaScriptObject().cast();
+				
+				List<Uint8ArrayNative> uints=JavaScriptUtils.toList(arrays);
+				uintArray.addAll(uints);
+				
+				extracted++;
+				
+				
+				
+				if(extracted==partitioned.size()){
+					LogUtils.log("crop-image-worker-end:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+					watch.reset();watch.start();
+					List<ImageData> imageDatas=Lists.newArrayList();
+					
+					 
+						for(int i=0;i<uintArray.size();i++){
+						ImageData imageData=ImageDataUtils.createNoCopyWith(canvasToDrawResult,rectArray.get(i).getWidth(), rectArray.get(i).getHeight());
+						ImageDataUtils.setGrayscale(imageData, uintArray.get(i), false);
+						imageDatas.add(imageData);
+						
+						}
+						onEndCreateGrayScaleImageDatas(canvasToDrawResult,rectArray,imageDatas);
+						LogUtils.log("end-cropped-imagedata-time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms"+",rect="+rectArray.size());
+						LogUtils.log("copy-rect-time:"+watch2.elapsed(TimeUnit.MILLISECONDS)+"ms");
+					}
+				
+			}
+		};
+		
+		
+		
+		final ImageData imageData=ImageDataUtils.copyFrom(canvasToDrawResult);
+		ImageDataUtils.convertToGrayScale(imageData, true);//1 channel grayscale
+		
+		
+		
+		WorkerPoolMultiCaller<List<Rect>> multiCaller=new WorkerPoolMultiCaller<List<Rect>>(cropImageWorkerPool,partitioned) {
+			
+			@Override
+			public WorkerPoolData convertToData(List<Rect> rects) {
+				watch2.start();
+				JsArray<HaarRect> array=JsArray.createArray().cast();
+				for(Rect rect:rects){
+					array.push(HaarRect.create(rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight()));
+				}
+				watch2.stop();
+				
+				final String keyName=""+System.currentTimeMillis()+","+Math.random();
+				tmpMap.put(keyName, rects);
+				final CropRectParam param=CropRectParam.create(imageData,array);
+				
+				WorkerPoolData poolData=new WorkerPoolData(){
+
+					//maybe no need
+					@Override
+					public String getParameterString(String key) {
+						// TODO Auto-generated method stub
+						return keyName;
+					}
+
+					@Override
+					public void postData(Worker worker) {
+						
+						worker.postMessage(param,WorkerPool.createMessagePorts(imageData));//for single case
+					}
+				};
+				
+				return poolData;
+			}
+			
+		};
+		multiCaller.start(10);
+		
+		
+		
+		
+	}
+	
+	private class RectAndImageData{
+		
+		
+		Rect rect;
+		ImageData imageData;
+		public RectAndImageData(Rect rect, ImageData imageData) {
+			super();
+			this.rect = rect;
+			this.imageData = imageData;
+		}
+	}
+	
+	protected void onEndCreateGrayScaleImageDatas(final Canvas canvas,final List<Rect> rectList, List<ImageData> imageDatas) {
+		if(rectList.size()!=imageDatas.size()){
+			LogUtils.log("Invalid result datas.quit. rects="+rectList.size()+",imageDatas="+imageDatas.size());
+			return;
+		}
+		final Stopwatch watch=Stopwatch.createStarted();
+		final Stopwatch watch2=Stopwatch.createUnstarted();
+		final int totalSize=2;
 		final List<JsArray<HaarRect>> result=Lists.newArrayList();
 		final StringBuffer createImageDataLogBuffer=new StringBuffer();
 		final String json=toJson();
 		
-		String option="?"+System.currentTimeMillis();
-		WorkerPool workerPool=new WorkerPool(totalSize,"/detect/worker.js"+option) {
+		
+		WorkerPool workerPool=new WorkerPool(totalSize,"/detect/worker.js") {
 			int extracted;
 			@Override
 			public void extractData(WorkerPoolData data, MessageEvent event) {
@@ -2142,7 +2371,7 @@ protected void doRepeat(boolean initial) {
 				
 				
 				
-				if(extracted==totalSize){
+				if(result.size()==rectList.size()){
 					int match=0;
 					LogUtils.log("detect-time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
 					 canvas.getContext2d().setStrokeStyle("#888");
@@ -2159,46 +2388,77 @@ protected void doRepeat(boolean initial) {
 					}
 					LogUtils.log("match-count:"+match);
 					LogUtils.log("create-image-data-time:"+watch2.elapsed(TimeUnit.MILLISECONDS)+" "+createImageDataLogBuffer.toString());
+					LogUtils.log("total-detect-time:"+detectStopwatch.elapsed(TimeUnit.MILLISECONDS)+"ms");
 				}
 				
 			}
 		};
-		int minW=detectWidth.getValue();
-		int minH=detectHeight.getValue();
-		double min_scale=detectInitialScale.getValue();
 		
-		checkState(minW>0 && minH>0,"invaid detect-size:"+minW+"x"+minH);
 		
 		
 		
 		
 				
-		List<Rect> rects=RectGenerator.generateRect(canvas.getCoordinateSpaceWidth(),canvas.getCoordinateSpaceHeight(), stepScale, scale_factor,minW,minH,min_scale);
+		
+		
+		//
+		
+		
+		createImageDataLogBuffer.append("rects="+rectList.size()+",image="+canvas.getCoordinateSpaceWidth()+"x"+canvas.getCoordinateSpaceHeight());
 		
 		
 		
-		createImageDataLogBuffer.append("rects="+rects.size()+",image="+canvas.getCoordinateSpaceWidth()+"x"+canvas.getCoordinateSpaceHeight());
+		int eachSize=rectList.size()/40;//split small piece for keep safe-crash
 		
 		
 		
-		int eachSize=rects.size()/totalSize;
-		if(rects.size()%totalSize>0){
-			eachSize++;
+		List<RectAndImageData> datas=Lists.newArrayList();
+		for(int i=0;i<rectList.size();i++){
+			datas.add(new RectAndImageData(rectList.get(i),imageDatas.get(i)));
 		}
 		
-		List<List<Rect>> partitioned=Lists.partition(rects, eachSize);
+		
+		List<List<RectAndImageData>> partitioned=Lists.partition(datas, eachSize);
+		
+		
 		
 				
-		WorkerPoolMultiCaller<List<Rect>> multiCaller=new WorkerPoolMultiCaller<List<Rect>>(workerPool,partitioned) {
+		WorkerPoolMultiCaller<List<RectAndImageData>> multiCaller=new WorkerPoolMultiCaller<List<RectAndImageData>>(workerPool,partitioned) {
 			
 			@Override
-			public WorkerPoolData convertToData(List<Rect> data) {
+			public WorkerPoolData convertToData(List<RectAndImageData> data) {
 				watch2.start();
-				List<ImageData> imageDataList=createImageDatas(canvas, data);
-				watch2.stop();
-				JsArray<ImageData> array= JavaScriptUtils.toArray(imageDataList);
 				
-				final DetectParam param=DetectParam.create(json, array, data);
+				JsArray<HaarRect> rectArray= JsArray.createArray().cast();
+				JsArray<ImageData> array= JsArray.createArray().cast();
+				for(RectAndImageData rdata:data){
+					
+					
+					/*
+					//debug to show
+					for(int x=0;x<rdata.imageData.getWidth();x++){
+						for(int y=0;y<rdata.imageData.getHeight();y++){
+							rdata.imageData.setAlphaAt(255, x, y);
+						}
+					}
+					
+					
+					*/
+					CanvasUtils.copyTo(rdata.imageData, sharedCanvas);
+					
+					CanvasUtils.clear(resizedCanvas);//for transparent image
+					resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
+					
+					//successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
+					
+					array.push(ImageDataUtils.copyFrom(resizedCanvas));
+					Rect rect=rdata.rect;
+					rectArray.push(HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));
+				}
+				watch2.stop();
+				
+				
+				final DetectParam param=DetectParam.create(json, array, rectArray);
 				final JavaScriptObject transfers=DetectParam.toTransfer(array);
 				
 				WorkerPoolData poolData=new WorkerPoolData(){
@@ -2225,6 +2485,24 @@ protected void doRepeat(boolean initial) {
 			
 		};
 		multiCaller.start(10);
+		
+	}
+
+	 Stopwatch detectStopwatch;
+	private void detectImageWithWorker(final Canvas canvas,int stepScale,double scale_factor){
+		detectStopwatch=Stopwatch.createStarted();
+		successPosPanel.clear();
+		
+		int minW=detectWidth.getValue();
+		int minH=detectHeight.getValue();
+		double min_scale=detectInitialScale.getValue();
+		
+		checkState(minW>0 && minH>0,"invaid detect-size:"+minW+"x"+minH);
+		List<Rect> rects=RectGenerator.generateRect(canvas.getCoordinateSpaceWidth(),canvas.getCoordinateSpaceHeight(), stepScale, scale_factor,minW,minH,min_scale);
+		
+		
+		createGrayScaleImageDatas(canvas, rects);//on end-worker call onEndCreateGrayScaleImageDatas
+		
 		
 	}
 	
@@ -3173,13 +3451,13 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	
 	private Map<String,List<Rect>> rectsMap=new HashMap<String, List<Rect>>();
 	
-	private boolean useRandom=true;//on first stage it's better use random
+	private boolean useRandomOnCreateVol=true;//on first stage it's better use random
 	private ImageElement lastImageElement;
 	private CVImageData lastData;
 	public Optional<Vol> createRandomVol(){
 		Stopwatch watch=Stopwatch.createStarted();
 		for(int j=0;j<20;j++){
-		int index=useRandom?getRandom(0, negativesZip.size()):0;
+		int index=useRandomOnCreateVol?getRandom(0, negativesZip.size()):0;
 		
 		CVImageData pdata=negativesZip.get(index);
 		
@@ -3275,6 +3553,10 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	private StageControler stageControler;
 
 	private Canvas testCanvas;
+
+	private VerticalPanel mainPanel;
+
+	private CheckBox createRandomVolCheck;
 	public static Vol createVolFromImageData(ImageData imageData){
 		//return createGrayscaleImageVolFromImageData(imageData);
 		return createLBPDepthVolFromImageData(imageData,true);
@@ -3308,15 +3590,19 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		bench1.stop();
 		bench2.start();
 		//int[][] ints=byteDataIntConverter.convert(imageData); //convert color image to grayscale data
-		int[][] data=lbpConverter.convert(ints);
+		//int[][] data=lbpConverter.convert(ints);
+		int[] retInt=lbpConverter.dataToBinaryPattern(ints, edgeSize, edgeSize);
 		bench2.stop();
 		
 		bench3.start();
 		Vol vol=createNewVol();
 		bench3.stop();
-		bench4.start();
-		int[] retInt=BinaryPattern.dataToBinaryPattern(data,lbpDataSplit,edgeSize,edgeSize);
-		bench4.stop();
+		
+		//bench4.start();
+		//int[] retInt=BinaryPattern.dataToBinaryPattern(data,lbpDataSplit,edgeSize,edgeSize);
+		//bench4.stop();
+		
+		
 		bench5.start();
 		//set vol
 		for(int i=0;i<retInt.length;i++){
