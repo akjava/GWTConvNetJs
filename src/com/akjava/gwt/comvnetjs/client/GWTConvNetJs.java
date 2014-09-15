@@ -2233,8 +2233,8 @@ protected void doRepeat(boolean initial) {
 	private void createGrayScaleImageDatas(final Canvas canvasToDrawResult,List<Rect> rects){
 		final Stopwatch watch=Stopwatch.createStarted();
 		final Stopwatch watch2=Stopwatch.createUnstarted();
-		final int totalSize=1;
-		int eachSize=rects.size()/totalSize;
+		final int totalSize=2;
+		int eachSize=rects.size()/totalSize*40;
 		
 		if(rects.size()%totalSize>0){
 			eachSize++;
@@ -2247,8 +2247,9 @@ protected void doRepeat(boolean initial) {
 		WorkerPool cropImageWorkerPool=new WorkerPool(totalSize,"/workers/cropgrayscale.js") {
 			int extracted;
 			
-			List<Uint8ArrayNative> uintArray=Lists.newArrayList();
+			//List<Uint8ArrayNative> uintArray=Lists.newArrayList();
 			List<Rect> rectArray=Lists.newArrayList();
+			List<JsArrayNumber> imageDatas=Lists.newArrayList();
 			@Override
 			public void doInitialize(){
 				extracted=0;
@@ -2261,8 +2262,46 @@ protected void doRepeat(boolean initial) {
 				
 				JsArray<Uint8ArrayNative> arrays=event.getDataAsJavaScriptObject().cast();
 				
+				
+				
 				List<Uint8ArrayNative> uints=JavaScriptUtils.toList(arrays);
-				uintArray.addAll(uints);
+				
+				for(int i=0;i<uints.size();i++){
+					sharedImageData=ImageDataUtils.createNoCopyWith(canvasToDrawResult,rectArray.get(i).getWidth(), rectArray.get(i).getHeight());
+					ImageDataUtils.setGrayscale(sharedImageData, uints.get(i), false);
+					
+
+					//somehow do resize need alpha,TODO move to worker
+					for(int x=0;x<sharedImageData.getWidth();x++){
+						for(int y=0;y<sharedImageData.getHeight();y++){
+							sharedImageData.setAlphaAt(255, x, y);
+						}
+					}
+					
+					
+					
+					CanvasUtils.copyTo(sharedImageData, sharedCanvas);
+					
+					CanvasUtils.clear(resizedCanvas);//for transparent image
+					resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
+					
+					successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
+					
+					
+					sharedImageData=ImageDataUtils.copyFrom(resizedCanvas);//is reduce data?
+					
+					int[] ints=createLBPDepthFromImageData(sharedImageData,false);
+					sharedImageData=null;
+					
+					JsArrayNumber number=JavaScriptUtils.toArray(ints);
+					
+					
+					imageDatas.add(number);
+					
+					}
+				
+				
+				//uintArray.addAll(uints);
 				
 				extracted++;
 				
@@ -2271,16 +2310,10 @@ protected void doRepeat(boolean initial) {
 				if(extracted==partitioned.size()){
 					LogUtils.log("crop-image-worker-end:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
 					watch.reset();watch.start();
-					List<ImageData> imageDatas=Lists.newArrayList();
 					
-					 
-						for(int i=0;i<uintArray.size();i++){
-						ImageData imageData=ImageDataUtils.createNoCopyWith(canvasToDrawResult,rectArray.get(i).getWidth(), rectArray.get(i).getHeight());
-						ImageDataUtils.setGrayscale(imageData, uintArray.get(i), false);
-						imageDatas.add(imageData);
+					
+					 	terminateAll();
 						
-						//TODO convert here.
-						}
 						onEndCreateGrayScaleImageDatas(canvasToDrawResult,rectArray,imageDatas);
 						LogUtils.log("end-cropped-imagedata-time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms"+",rect="+rectArray.size());
 						LogUtils.log("copy-rect-time:"+watch2.elapsed(TimeUnit.MILLISECONDS)+"ms");
@@ -2342,16 +2375,21 @@ protected void doRepeat(boolean initial) {
 		
 		
 		Rect rect;
-		ImageData imageData;
-		public RectAndImageData(Rect rect, ImageData imageData) {
+		JsArrayNumber number;
+		//ImageData imageData;
+		public RectAndImageData(Rect rect, JsArrayNumber number) {
+		//public RectAndImageData(Rect rect, ImageData imageData) {
 			super();
 			this.rect = rect;
-			this.imageData = imageData;
+			this.number = number;
 		}
 	}
 	
+	/*
+	 * even this style crash on memory-over
+	 */
 	private ImageData sharedImageData;
-	protected void onEndCreateGrayScaleImageDatas(final Canvas canvas,final List<Rect> rectList, List<ImageData> imageDatas) {
+	protected void onEndCreateGrayScaleImageDatas(final Canvas canvas,final List<Rect> rectList, List<JsArrayNumber> imageDatas) {
 		if(rectList.size()!=imageDatas.size()){
 			LogUtils.log("Invalid result datas.quit. rects="+rectList.size()+",imageDatas="+imageDatas.size());
 			return;
@@ -2406,6 +2444,7 @@ protected void doRepeat(boolean initial) {
 					LogUtils.log("match-count:"+match);
 					LogUtils.log("create-image-data-time:"+watch2.elapsed(TimeUnit.MILLISECONDS)+" "+createImageDataLogBuffer.toString());
 					LogUtils.log("total-detect-time:"+detectStopwatch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+					terminateAll();
 				}
 				
 				
@@ -2440,40 +2479,12 @@ protected void doRepeat(boolean initial) {
 				
 				JsArray<HaarRect> rectArray= JsArray.createArray().cast();
 				JsArray<JsArrayNumber> array= JsArray.createArray().cast();
-				for(RectAndImageData rdata:data){
-					
-					
-					
-					//somehow do resize need alpha
-					for(int x=0;x<rdata.imageData.getWidth();x++){
-						for(int y=0;y<rdata.imageData.getHeight();y++){
-							rdata.imageData.setAlphaAt(255, x, y);
-						}
-					}
-					
-					
-					
-					CanvasUtils.copyTo(rdata.imageData, sharedCanvas);
-					
-					CanvasUtils.clear(resizedCanvas);//for transparent image
-					resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
-					
-					successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
-					
-					
-					sharedImageData=ImageDataUtils.copyFrom(resizedCanvas);//is reduce data?
-					
-					int[] ints=createLBPDepthFromImageData(sharedImageData,false);
-					sharedImageData=null;
-					
-					JsArrayNumber number=JavaScriptUtils.toArray(ints);
-					
-					//Vol vol=createVolFromGrayscaleImageData(sharedImageData);
-					array.push(number);
-					
-					
+				for(int i=0;i<data.size();i++){
+					RectAndImageData rdata=data.get(i);
 					Rect rect=rdata.rect;
 					rectArray.push(HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));
+					
+					array.push(rdata.number);
 				}
 				watch2.stop();
 				
@@ -2494,6 +2505,8 @@ protected void doRepeat(boolean initial) {
 						
 						//JsArray<MessagePort> ports=transfers.cast();
 						worker.postMessage(param);
+						//param.setImageDatas(null);
+						//param.setRects(null);
 						//worker.postMessage(param,ports);
 						
 						
@@ -2515,6 +2528,13 @@ protected void doRepeat(boolean initial) {
 	/*
 	 * sadly this way really consume memory over 100,000
 	 */
+	/**
+	 * @deprecated
+	 * @param canvas
+	 * @param rectList
+	 * @param imageDatas
+	 */
+	
 	protected void onEndCreateGrayScaleImageDatasWithImageData(final Canvas canvas,final List<Rect> rectList, List<ImageData> imageDatas) {
 		if(rectList.size()!=imageDatas.size()){
 			LogUtils.log("Invalid result datas.quit. rects="+rectList.size()+",imageDatas="+imageDatas.size());
@@ -2582,7 +2602,8 @@ protected void doRepeat(boolean initial) {
 		
 		List<RectAndImageData> datas=Lists.newArrayList();
 		for(int i=0;i<rectList.size();i++){
-			datas.add(new RectAndImageData(rectList.get(i),imageDatas.get(i)));
+			datas.add(new RectAndImageData(rectList.get(i),null));
+			//datas.add(new RectAndImageData(rectList.get(i),imageDatas.get(i)));
 		}
 		
 		
@@ -2612,7 +2633,8 @@ protected void doRepeat(boolean initial) {
 					
 					
 					*/
-					CanvasUtils.copyTo(rdata.imageData, sharedCanvas);
+					//deprecated
+					//CanvasUtils.copyTo(rdata.imageData, sharedCanvas);
 					
 					CanvasUtils.clear(resizedCanvas);//for transparent image
 					resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
