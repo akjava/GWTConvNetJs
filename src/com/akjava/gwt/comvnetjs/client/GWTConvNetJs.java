@@ -2279,6 +2279,7 @@ protected void doRepeat(boolean initial) {
 						ImageDataUtils.setGrayscale(imageData, uintArray.get(i), false);
 						imageDatas.add(imageData);
 						
+						//TODO convert here.
 						}
 						onEndCreateGrayScaleImageDatas(canvasToDrawResult,rectArray,imageDatas);
 						LogUtils.log("end-cropped-imagedata-time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms"+",rect="+rectArray.size());
@@ -2357,7 +2358,7 @@ protected void doRepeat(boolean initial) {
 		}
 		
 		
-		int eachSize=rectList.size()/2;//split small piece for keep safe-crash
+		int eachSize=rectList.size()/10;//split small piece for keep safe-crash
 		
 		
 		
@@ -2434,7 +2435,7 @@ protected void doRepeat(boolean initial) {
 			
 			@Override
 			public WorkerPoolData convertToData(List<RectAndImageData> data) {
-				LogUtils.log("data-converted:"+data.size());
+				//LogUtils.log("data-converted:"+data.size());
 				watch2.start();
 				
 				JsArray<HaarRect> rectArray= JsArray.createArray().cast();
@@ -2442,8 +2443,8 @@ protected void doRepeat(boolean initial) {
 				for(RectAndImageData rdata:data){
 					
 					
-					/*
-					//debug to show
+					
+					//somehow do resize need alpha
 					for(int x=0;x<rdata.imageData.getWidth();x++){
 						for(int y=0;y<rdata.imageData.getHeight();y++){
 							rdata.imageData.setAlphaAt(255, x, y);
@@ -2451,18 +2452,20 @@ protected void doRepeat(boolean initial) {
 					}
 					
 					
-					*/
+					
 					CanvasUtils.copyTo(rdata.imageData, sharedCanvas);
 					
 					CanvasUtils.clear(resizedCanvas);//for transparent image
 					resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
 					
-					//successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
+					successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
 					
 					
-					ImageData imageData=ImageDataUtils.copyFrom(resizedCanvas);//is reduce data?
+					sharedImageData=ImageDataUtils.copyFrom(resizedCanvas);//is reduce data?
 					
-					int[] ints=createLBPDepthFromImageData(imageData,false);
+					int[] ints=createLBPDepthFromImageData(sharedImageData,false);
+					sharedImageData=null;
+					
 					JsArrayNumber number=JavaScriptUtils.toArray(ints);
 					
 					//Vol vol=createVolFromGrayscaleImageData(sharedImageData);
