@@ -5,11 +5,13 @@ import com.akjava.gwt.comvnetjs.client.GWTConvNetJs;
 import com.akjava.gwt.comvnetjs.client.Net;
 import com.akjava.gwt.comvnetjs.client.Vol;
 import com.akjava.gwt.comvnetjs.client.worker.DetectParam;
+import com.akjava.gwt.comvnetjs.client.worker.DetectParam2;
 import com.akjava.gwt.comvnetjs.client.worker.HaarRect;
 import com.google.gwt.canvas.dom.client.ImageData;
 import com.google.gwt.core.client.EntryPoint;
 import com.google.gwt.core.client.JavaScriptObject;
 import com.google.gwt.core.client.JsArray;
+import com.google.gwt.core.client.JsArrayNumber;
 
 import elemental.js.html.JsDedicatedWorkerGlobalScope;
 
@@ -27,7 +29,7 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
 
     // This method is the bridge between HTML worker callback and GWT/Java code
     public static void bridge(JavaScriptObject msg) {
-    	detect((DetectParam)msg.cast());
+    	detect((DetectParam2)msg.cast());
     }
     
     // create a reference in the browser js to the Java method
@@ -74,7 +76,7 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
 	   return r;
    }
    
-    public static void detect(DetectParam param){
+    public static void detect(DetectParam2 param){
     	
     	
     	
@@ -82,15 +84,25 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
     	
     	JsArray<Net> nets=jsonToNet(param.getJson());
     	
-    	
+    	//log("detect");
+    	//log(""+param.getImageDatas().length());
 		for(int i=0;i<param.getRects().length();i++){
+			//log("start:"+i);
 			HaarRect rect=param.getRects().get(i);
-			ImageData imageData=param.getImageDatas().get(i);
-			
-			
+			JsArrayNumber retInt=param.getImageDatas().get(i);
 			//this must extreamly slow
-			Vol vol=GWTConvNetJs.createVolFromGrayscaleImageData(imageData);
-			
+			Vol vol=GWTConvNetJs.createNewVol();
+
+					
+					//set vol
+					for(int j=0;j<retInt.length();j++){
+						double v=(double)retInt.get(j)/128-1; //max valu is 16x16(256) to range(-1 - 1)
+						//double v=(double)retInt[i]/72-1;//maybe range(-1 - 1) //split must be 2 for 12x12(144) block <-- for 24x24
+						//double v=(double)retInt[i]/18-1;//maybe -1 - 1 //split must be 4 for 6x6(36) block  <-- for 24x24
+						
+						
+						vol.set(0, 0,j,v);
+					}
 			//Vol vol=ConvnetJs.createGrayVolFromGrayScaleImage(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 			
 			double result=passAll(nets,vol);
@@ -100,7 +112,15 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
 			}
 			
 			
+			//dispose(imageData);
+			
 		}
+		//log("done");
+		/*
+		param.setImageDatas(null);
+		param.setRects(null);
+		param.setJson(null);
+		*/
     	
     	//recover from jsons
     	//do somethings.
@@ -108,6 +128,46 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
     	doPostMessage(resultRect);
     	
     }
+    
+    /*
+     * deprecased because of memory consume
+     */
+    public static void detect1(DetectParam param){
+JsArray<HaarRect> resultRect=JsArray.createArray().cast();
+    	
+    	JsArray<Net> nets=jsonToNet(param.getJson());
+    	
+    	
+		for(int i=0;i<param.getRects().length();i++){
+			HaarRect rect=param.getRects().get(i);
+			ImageData imageData=param.getImageDatas().get(i);
+			
+			
+			Vol vol=GWTConvNetJs.createVolFromGrayscaleImageData(imageData);
+			
+			double result=passAll(nets,vol);
+			if(result!=-1){
+				rect.setConfidence(result);
+    			resultRect.push(rect);
+			}
+			
+			
+		}
+    	doPostMessage(resultRect);
+    	
+    }
+    
+    private final native static void logVol(Vol vol) /*-{
+    console.log(vol.w);
+  }-*/;
+    
+    private final native static void log(String log) /*-{
+    console.log(log);
+  }-*/;
+    
+    private final native static void dispose(ImageData data) /*-{
+    data.data.buffer=new ArrayBuffer(0);
+  }-*/;
     
     // Workaround for posting from static method
     private final native static void doPostMessage(JsArray<HaarRect> rects) /*-{
