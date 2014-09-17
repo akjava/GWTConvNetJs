@@ -5,13 +5,17 @@ import com.akjava.gwt.comvnetjs.client.GWTConvNetJs;
 import com.akjava.gwt.comvnetjs.client.Net;
 import com.akjava.gwt.comvnetjs.client.Vol;
 import com.akjava.gwt.comvnetjs.client.worker.DetectParam;
-import com.akjava.gwt.comvnetjs.client.worker.DetectParam2;
+import com.akjava.gwt.comvnetjs.client.worker.DetectParam1;
 import com.akjava.gwt.comvnetjs.client.worker.HaarRect;
+import com.akjava.gwt.lib.client.LogUtils;
+import com.akjava.gwt.lib.client.experimental.ImageDataUtils;
+import com.akjava.gwt.lib.client.experimental.ResizeUtils;
 import com.google.gwt.canvas.dom.client.ImageData;
 import com.google.gwt.core.client.EntryPoint;
 import com.google.gwt.core.client.JavaScriptObject;
 import com.google.gwt.core.client.JsArray;
 import com.google.gwt.core.client.JsArrayNumber;
+import com.google.gwt.typedarrays.client.Uint8ArrayNative;
 
 import elemental.js.html.JsDedicatedWorkerGlobalScope;
 
@@ -29,7 +33,7 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
 
     // This method is the bridge between HTML worker callback and GWT/Java code
     public static void bridge(JavaScriptObject msg) {
-    	detect((DetectParam2)msg.cast());
+    	detect((DetectParam)msg.cast());
     }
     
     // create a reference in the browser js to the Java method
@@ -76,45 +80,51 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
 	   return r;
    }
    
-    public static void detect(DetectParam2 param){
-    	
-    	
-    	
+    public static void detect(DetectParam param){
     	JsArray<HaarRect> resultRect=JsArray.createArray().cast();
-    	
     	JsArray<Net> nets=jsonToNet(param.getJson());
+    	
+    	ImageData imageData=param.getImageData();
+    	if(param.getRects()==null){
+    		//TODO get rect params
+    		//detectAll();
+    	}else{
+    		for(int i=0;i<param.getRects().length();i++){
+    			//log("start:"+i);
+    			HaarRect rect=param.getRects().get(i);
+    			
+    			Uint8ArrayNative cropped=ImageDataUtils.cropRedOnlyPacked(imageData, rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight());
+    			
+    			/*
+    			String debug="";
+    			for(int k=0;k<cropped.length();k++){
+    				debug+=cropped.get(k)+",";
+    			}
+    			LogUtils.log(debug);
+    			*/
+    			
+    			Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnlyPacked(cropped, rect.getWidth(), rect.getHeight(), 36,36);
+    			
+    			
+    			
+    			Vol vol=GWTConvNetJs.createVolFromIndexes(GWTConvNetJs.createLBPDepthFromUint8ArrayPacked(resized, false));
+    			
+    			double result=passAll(nets,vol);
+    			if(result!=-1){
+    				rect.setConfidence(result);
+        			resultRect.push(rect);
+    			}
+    			
+    			
+    			//dispose(imageData);
+    			
+    		}
+    		
+    	}
     	
     	//log("detect");
     	//log(""+param.getImageDatas().length());
-		for(int i=0;i<param.getRects().length();i++){
-			//log("start:"+i);
-			HaarRect rect=param.getRects().get(i);
-			JsArrayNumber retInt=param.getImageDatas().get(i);
-			//this must extreamly slow
-			Vol vol=GWTConvNetJs.createNewVol();
-
-					
-					//set vol
-					for(int j=0;j<retInt.length();j++){
-						double v=(double)retInt.get(j)/128-1; //max valu is 16x16(256) to range(-1 - 1)
-						//double v=(double)retInt[i]/72-1;//maybe range(-1 - 1) //split must be 2 for 12x12(144) block <-- for 24x24
-						//double v=(double)retInt[i]/18-1;//maybe -1 - 1 //split must be 4 for 6x6(36) block  <-- for 24x24
-						
-						
-						vol.set(0, 0,j,v);
-					}
-			//Vol vol=ConvnetJs.createGrayVolFromGrayScaleImage(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
-			
-			double result=passAll(nets,vol);
-			if(result!=-1){
-				rect.setConfidence(result);
-    			resultRect.push(rect);
-			}
-			
-			
-			//dispose(imageData);
-			
-		}
+		
 		//log("done");
 		/*
 		param.setImageDatas(null);
@@ -132,7 +142,7 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
     /*
      * deprecased because of memory consume
      */
-    public static void detect1(DetectParam param){
+    public static void detect1(DetectParam1 param){
 JsArray<HaarRect> resultRect=JsArray.createArray().cast();
     	
     	JsArray<Net> nets=jsonToNet(param.getJson());

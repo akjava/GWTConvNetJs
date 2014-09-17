@@ -20,7 +20,7 @@ public abstract class StageControler {
 	private int mode;
 	
 	private int ratio;
-	private int learningTime;
+	protected int learningTime;
 	protected List<StageResult> stageResults;
 	public List<StageResult> getStageResults() {
 		return stageResults;
@@ -104,9 +104,7 @@ public abstract class StageControler {
 				}else if(mode==MODE_REPEAT){
 					score=repeating();
 					learningTime++;
-					if(learningTime%500==0){
-						LogUtils.log("learning:"+learningTime+"score:"+score);
-					}
+					
 					if(learningTime==learningInfo.maxLearning){
 						mode=MODE_VARIATION;
 						//ratio has already incresed;

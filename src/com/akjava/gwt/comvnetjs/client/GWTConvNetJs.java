@@ -17,6 +17,7 @@ import com.akjava.gwt.comvnetjs.client.StageControler.ScoreGroup;
 import com.akjava.gwt.comvnetjs.client.StageControler.StageResult;
 import com.akjava.gwt.comvnetjs.client.worker.CropRectParam;
 import com.akjava.gwt.comvnetjs.client.worker.DetectParam;
+import com.akjava.gwt.comvnetjs.client.worker.DetectParam1;
 import com.akjava.gwt.comvnetjs.client.worker.DetectParam2;
 import com.akjava.gwt.comvnetjs.client.worker.HaarRect;
 import com.akjava.gwt.comvnetjs.client.worker.MakeRectParam;
@@ -24,6 +25,7 @@ import com.akjava.gwt.html5.client.download.HTML5Download;
 import com.akjava.gwt.html5.client.file.File;
 import com.akjava.gwt.html5.client.file.FileUploadForm;
 import com.akjava.gwt.html5.client.file.FileUtils;
+import com.akjava.gwt.html5.client.file.FileUtils.DataArrayListener;
 import com.akjava.gwt.html5.client.file.FileUtils.DataURLListener;
 import com.akjava.gwt.html5.client.file.Uint8Array;
 import com.akjava.gwt.jszip.client.JSFile;
@@ -38,6 +40,7 @@ import com.akjava.gwt.lib.client.LogUtils;
 import com.akjava.gwt.lib.client.experimental.ExecuteButton;
 import com.akjava.gwt.lib.client.experimental.ImageDataUtils;
 import com.akjava.gwt.lib.client.experimental.RectCanvasUtils;
+import com.akjava.gwt.lib.client.experimental.ResizeUtils;
 import com.akjava.gwt.lib.client.experimental.ToStringValueListBox;
 import com.akjava.gwt.lib.client.experimental.lbp.ByteImageDataIntConverter;
 import com.akjava.gwt.lib.client.experimental.lbp.ByteImageDataIntConverter.ImageDataToByteFunction;
@@ -103,6 +106,7 @@ import com.google.gwt.user.client.ui.Button;
 import com.google.gwt.user.client.ui.CheckBox;
 import com.google.gwt.user.client.ui.DockLayoutPanel;
 import com.google.gwt.user.client.ui.DoubleBox;
+import com.google.gwt.user.client.ui.FileUpload;
 import com.google.gwt.user.client.ui.HorizontalPanel;
 import com.google.gwt.user.client.ui.Image;
 import com.google.gwt.user.client.ui.IntegerBox;
@@ -113,7 +117,6 @@ import com.google.gwt.user.client.ui.RootLayoutPanel;
 import com.google.gwt.user.client.ui.ScrollPanel;
 import com.google.gwt.user.client.ui.VerticalPanel;
 import com.google.gwt.webworker.client.MessageEvent;
-import com.google.gwt.webworker.client.MessagePort;
 import com.google.gwt.webworker.client.Worker;
 
 /**
@@ -422,12 +425,85 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 		//maybe it's better to use lbp-cropped when export images.
 		
 		loadPositiveZip();
-		loadNegativeZip();
+		//loadNegativeZip();
 		
 		
+		
+		FileUploadForm negativeUpload=FileUtils.createSingleFileUploadForm(new DataArrayListener() {
+			
+			@Override
+			public void uploaded(File file, Uint8Array array) {
+				negativeZipLabel.setText(file.getFileName());
+				final Stopwatch watch=Stopwatch.createStarted();
+				
+				negativesZip=new CVImageZip(array);
+				negativesZip.setUseCache(true);
+				negativesZip.setName(file.getFileName());
+				negativesZip.shuffle();//negative file need shuffle?
+				checkState(negativesZip.size()>0,"some how empty zip or index/bg");
+				
+				LogUtils.log("pre-extract-time:"+watch.elapsed(TimeUnit.SECONDS)+"s");
+				watch.reset();watch.start();
+				final List<CVImageData> datas=Lists.newArrayList(negativesZip.getDatas());
+				
+				
+				WorkerPool workerPool=new WorkerPool(24,"/workers/uint8tobase64.js") {
+					int extracted;
+					@Override
+					public void extractData(WorkerPoolData data, MessageEvent event) {
+						String base64=event.getDataAsString();
+						extracted++;
+						
+						
+						
+						for(FileType type:FileType.getFileTypeFromFileName(data.getParameterString("name")).asSet()){
+							String dataUrl=Base64Utils.toDataUrl(type.getMimeType(),base64);
+							negativesZip.putCache(data.getParameterString("name"), dataUrl);
+							
+							//how to catch all data extracted.
+							if(extracted==negativesZip.getDatas().size()){
+								//createNegativeRectangles();//this way slow,but less freeze time
+								LogUtils.log(getNegativeInfo());
+								LogUtils.log("load negatives-image-only from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+							}
+							
+							return;
+						}
+						
+						LogUtils.log("invalid name for convert base64 imagee:"+data.getParameterString("name"));
+						
+					}
+				};
+				
+				WorkerPoolMultiCaller<CVImageData> multiCaller=new WorkerPoolMultiCaller<CVImageData>(workerPool,datas) {
 
+					@Override
+					public WorkerPoolData convertToData(CVImageData data) {
+						JSFile file=negativesZip.getZip().getFile(data.getFileName());
+						Uint8Array array=file.asUint8Array();
+						Uint8WorkerPoolData poolData= new Uint8WorkerPoolData(array.convertToNative(),false);
+						poolData.setParameterString("name", data.getFileName());
+						return poolData;
+					}
+					
+				};
+				multiCaller.start(10);
+				
+			}
+		});
+		HorizontalPanel negativePanel=new HorizontalPanel();
+		mainPanel.add(negativePanel);
+		negativePanel.add(new Label("Negative-Zip:"));
+		
+		negativeZipLabel=new Label("NOT SELECTED NEED SELECT TO LEARN");
+		negativePanel.add(negativeZipLabel);
+		negativePanel.add(negativeUpload);
+		
 		
 		mainPanel.add(createFullAutoControls());
+		
+		
+		
 		
 		updateCascadeLabel();
 		testCanvas = CanvasUtils.createCanvas(200, 200);;
@@ -655,7 +731,7 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 		HorizontalPanel buttons=new HorizontalPanel();
 		panel.add(buttons);
 		ExecuteButton startBt=new ExecuteButton("Start",false) {
-			
+			Stopwatch watch=Stopwatch.createUnstarted();
 			@Override
 			public void executeOnClick() {
 				stageControler = new StageControler(){
@@ -678,6 +754,7 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 
 					@Override
 					public Score doTraining(int positiveRatio, boolean initial) {
+						
 						doTrain(positiveRatio,initial);
 						TestResult result=doTestLastPositiveTrainedAll();
 						TestResult missHit=doTestCascadeReal(getLastCascade(),false);
@@ -691,7 +768,21 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 						TestResult result=doTestLastPositiveTrainedAll();
 						TestResult missHit=doTestCascadeReal(getLastCascade(),false);
 						
-						return new Score(result.getMatchRate(),missHit.getFalseAlarmRate());
+						
+						
+						Score score= new Score(result.getMatchRate(),missHit.getFalseAlarmRate());
+						
+						if(learningTime%500==0){
+							if(learningTime!=0){
+								LogUtils.log("learning:"+learningTime+"score:"+score+",item="+lastLeaningList.size()+",time="+watch.elapsed(TimeUnit.SECONDS)+"s");
+								
+							}
+							
+							watch.reset();watch.start();
+						}
+						
+						
+						return score;
 					}
 
 					@Override
@@ -2389,6 +2480,137 @@ protected void doRepeat(boolean initial) {
 	 * even this style crash on memory-over
 	 */
 	private ImageData sharedImageData;
+	
+	
+	protected void detectImageWithWorker(final Canvas canvas,final List<Rect> rects) {
+		final int totalSize=32;
+		
+		
+		
+		int eachSize=rects.size()/totalSize;//split small piece for keep safe-crash
+		
+		
+		
+		
+		
+		final List<List<Rect>> partitioned=Lists.partition(rects, eachSize);
+		
+		
+		final Stopwatch watch=Stopwatch.createStarted();
+		final Stopwatch watch2=Stopwatch.createUnstarted();
+		
+		final List<JsArray<HaarRect>> rectArrayList=Lists.newArrayList();
+		final StringBuffer createImageDataLogBuffer=new StringBuffer();
+		final String json=toJson();
+		
+		
+		WorkerPool workerPool=new WorkerPool(totalSize,"/detect/worker.js") {
+			int extracted;
+			@Override
+			public void extractData(WorkerPoolData data, MessageEvent event) {
+				JsArray<HaarRect> rects=event.getDataAsJavaScriptObject().cast();
+				rectArrayList.add(rects);
+				
+				extracted++;
+				
+				if(extracted==partitioned.size()){
+					int match=0;
+					LogUtils.log("detect-time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+					 canvas.getContext2d().setStrokeStyle("#888");
+					
+					//TODO should sort?
+					for(JsArray<HaarRect> array:rectArrayList){
+					 for(int i=0;i<array.length();i++){
+						 HaarRect r=array.get(i);
+						 	
+						 	//LogUtils.log(r);
+				        	RectCanvasUtils.strokeCircle(canvas,r.getX(),r.getY(),r.getWidth(),r.getHeight(), true);
+				        	match++;
+				        }
+					}
+					LogUtils.log("match-count:"+match);
+					LogUtils.log("create-image-data-time:"+watch2.elapsed(TimeUnit.MILLISECONDS)+" "+createImageDataLogBuffer.toString());
+					LogUtils.log("total-detect-time:"+detectStopwatch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+					terminateAll();
+				}
+				
+				
+			}
+		};
+		
+		
+		
+		
+		
+				
+		
+		
+		//
+		
+		
+		createImageDataLogBuffer.append("rects="+rects.size()+",image="+canvas.getCoordinateSpaceWidth()+"x"+canvas.getCoordinateSpaceHeight());
+		
+		
+		
+		
+		
+		 Canvas grayscale=CanvasUtils.convertToGrayScale(canvas, null);
+		 final ImageData grayScaleImageData=ImageDataUtils.copyFrom(grayscale);
+		
+		
+				
+		WorkerPoolMultiCaller<List<Rect>> multiCaller=new WorkerPoolMultiCaller<List<Rect>>(workerPool,partitioned) {
+			
+			@Override
+			public WorkerPoolData convertToData(List<Rect> data) {
+				//LogUtils.log("data-converted:"+data.size());
+				watch2.start();
+				
+				JsArray<HaarRect> rectArray= JsArray.createArray().cast();
+				
+				for(int i=0;i<data.size();i++){
+					Rect rect=data.get(i);
+					rectArray.push(HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));
+				}
+				watch2.stop();
+				
+				
+				final DetectParam param=DetectParam.create(json, grayScaleImageData, rectArray);
+			//	final JavaScriptObject transfers=WorkerPool.createMessagePorts(grayScaleImageData);
+				
+				WorkerPoolData poolData=new WorkerPoolData(){
+
+					@Override
+					public String getParameterString(String key) {
+						// TODO Auto-generated method stub
+						return null;
+					}
+
+					@Override
+					public void postData(Worker worker) {
+						
+						//JsArray<MessagePort> ports=transfers.cast();
+						worker.postMessage(param);
+						//param.setImageDatas(null);
+						//param.setRects(null);
+						//worker.postMessage(param,ports);
+						
+						
+						
+						//LogUtils.log("data-length:"+param.getImageDatas().get(0).getData().getLength());
+						//
+					}
+				};
+				
+				return poolData;
+			}
+			
+		};
+		LogUtils.log("call");
+		multiCaller.start(10);
+		
+	}
+	
 	protected void onEndCreateGrayScaleImageDatas(final Canvas canvas,final List<Rect> rectList, List<JsArrayNumber> imageDatas) {
 		if(rectList.size()!=imageDatas.size()){
 			LogUtils.log("Invalid result datas.quit. rects="+rectList.size()+",imageDatas="+imageDatas.size());
@@ -2648,7 +2870,7 @@ protected void doRepeat(boolean initial) {
 				watch2.stop();
 				
 				
-				final DetectParam param=DetectParam.create(json, array, rectArray);
+				final DetectParam1 param=DetectParam1.create(json, array, rectArray);
 				//final JavaScriptObject transfers=DetectParam.toTransfer(array);
 				
 				WorkerPoolData poolData=new WorkerPoolData(){
@@ -2694,7 +2916,8 @@ protected void doRepeat(boolean initial) {
 		List<Rect> rects=RectGenerator.generateRect(canvas.getCoordinateSpaceWidth(),canvas.getCoordinateSpaceHeight(), stepScale, scale_factor,minW,minH,min_scale);
 		
 		
-		createGrayScaleImageDatas(canvas, rects);//on end-worker call onEndCreateGrayScaleImageDatas
+		detectImageWithWorker(canvas,rects);
+		//createGrayScaleImageDatas(canvas, rects);//on end-worker call onEndCreateGrayScaleImageDatas
 		
 		
 	}
@@ -2770,7 +2993,7 @@ protected void doRepeat(boolean initial) {
 	        	RectCanvasUtils.strokeCircle(r, canvas, true);;
 	        }
 		 
-		 LogUtils.log("imageDataToByteFunction:"+bench1.elapsed(TimeUnit.MILLISECONDS)+",lbpConverter:"+bench2.elapsed(TimeUnit.MILLISECONDS)+",createNewVol:"+bench3.elapsed(TimeUnit.MILLISECONDS)+",dataToBinaryPattern:"+bench4.elapsed(TimeUnit.MILLISECONDS)+",128-1:"+bench5.elapsed(TimeUnit.MILLISECONDS));
+		 LogUtils.log("crop:"+bench1.elapsed(TimeUnit.MILLISECONDS)+",resize:"+bench2.elapsed(TimeUnit.MILLISECONDS)+",create-vol:"+bench3.elapsed(TimeUnit.MILLISECONDS)+",net.forwards:"+bench4.elapsed(TimeUnit.MILLISECONDS)+",none:"+bench5.elapsed(TimeUnit.MILLISECONDS));
 	}
 	
 
@@ -2800,10 +3023,19 @@ protected void doRepeat(boolean initial) {
 	}
 	
 
+	
+	private String toDataUrl(Uint8ArrayNative array,int w,int h){
+		ImageData data=ImageDataUtils.createNoCopyWith(sharedCanvas, w, h);//they must have rgba
+		ResizeUtils.setUint8Array(data, array);
+		
+		CanvasUtils.copyTo(data, resizedCanvas);
+		return resizedCanvas.toDataUrl();
+		
+	}
 
 	
 	protected void detectImage(int minW,int minH,int stepScale,double scale,Canvas imageCanvas) {
-		
+		ImageData imageData=ImageDataUtils.copyFrom(imageCanvas);//this make slow
 		int lastCascadeIndex=cascades.size()-1;
 		
 		int winW=(int) (minW*scale);
@@ -2818,15 +3050,31 @@ protected void doRepeat(boolean initial) {
         
         for(double x=0;x<endX;x+=step_x){
         	for(double y=0;y<endY;y+=step_y){
-        		int dx=(int) x;
+        		int dx=(int)x;
         		int dy=(int)y;
         		sharedRect.setX(dx);
         		sharedRect.setY(dy);
         		
-        		RectCanvasUtils.crop(imageCanvas, sharedRect, sharedCanvas);
+        		bench1.start();
+        		Uint8ArrayNative cropped=ImageDataUtils.cropRedOnlyPacked(imageData, sharedRect.getX(), sharedRect.getY(), sharedRect.getWidth(), sharedRect.getHeight());
+        		bench1.stop();
+        		
+        		bench2.start();
+        		Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnlyPacked(cropped, sharedRect.getWidth(), sharedRect.getHeight(), 36,36);
+        		bench2.stop();
+    			
+        		bench3.start();
+    			Vol vol=GWTConvNetJs.createVolFromIndexes(GWTConvNetJs.createLBPDepthFromUint8ArrayPacked(resized, false));
+    			bench3.stop();
+    			
+    			//successPosPanel.add(new Image(toDataUrl(cropped,sharedRect.getWidth(),sharedRect.getHeight())));
+    			
+        		
         		
         		//now cropped image into sharedCanvas
         		
+        		/*
+        		RectCanvasUtils.crop(imageCanvas, sharedRect, sharedCanvas);
 				CanvasUtils.clear(resizedCanvas);//for transparent image
 				
 				resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
@@ -2834,21 +3082,24 @@ protected void doRepeat(boolean initial) {
 				//#RectCanvasUtils.cropAndResize(imageCanvas,rect,w,h,sharedCanvas,clearBeforedraw);//if use transparent or something
 			
 				//this must extreamly slow
-				Vol vol=createVolFromGrayscaleImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 				
+				Vol vol=createVolFromGrayscaleImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
+				*/
+        		
 				//Vol vol=ConvnetJs.createGrayVolFromGrayScaleImage(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
 				
-				
+    			bench4.start();
 				for(Vol passAll:cascades.get(lastCascadeIndex).filter(vol).asSet()){
 					
 					
 					
 					Vol passMyself=cascades.get(lastCascadeIndex).getNet().forward(passAll);
-					successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
+					//successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
         			ConfidenceRect conf=new ConfidenceRect(sharedRect);
         			conf.setConfidence(passMyself.getW(0));
         			mutchRect.add(conf);
 				}
+				bench4.stop();
 				
 				detectCount++;
         		//detect
@@ -3750,6 +4001,8 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	private VerticalPanel mainPanel;
 
 	private CheckBox createRandomVolCheck;
+
+	private Label negativeZipLabel;
 	public static Vol createVolFromImageData(ImageData imageData){
 		//return createGrayscaleImageVolFromImageData(imageData);
 		return createLBPDepthVolFromImageData(imageData,true);
@@ -3760,6 +4013,53 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	}
 	public static  Vol createNewVol(){
 		return ConvnetJs.createVol(1, 1, 8*lbpDataSplit*lbpDataSplit, 0);
+	}
+	
+	
+	/**
+	 * 
+	 * @param array must be 36x36
+	 * @param color
+	 * @return
+	 */
+	public static int[] createLBPDepthFromUint8Array(Uint8ArrayNative array,boolean color){
+		int[][] ints=null;
+		if(color){
+			//TODO
+		}else{
+			ints=new int[36][36];
+			for(int x=0;x<ints.length;x++){
+				for(int y=0;y<ints[0].length;y++){
+					int index=(y*ints.length+x)*4;
+					ints[x][y]=array.get(index);//red
+				}
+			}
+		}
+		
+		//int[][] ints=byteDataIntConverter.convert(imageData); //convert color image to grayscale data
+		//int[][] data=lbpConverter.convert(ints);
+		int[] retInt=lbpConverter.dataToBinaryPattern(ints, edgeSize, edgeSize);
+		return retInt;
+	}
+	
+	public static int[] createLBPDepthFromUint8ArrayPacked(Uint8ArrayNative array,boolean color){
+		int[][] ints=null;
+		if(color){
+			//TODO
+		}else{
+			ints=new int[36][36];
+			for(int x=0;x<ints.length;x++){
+				for(int y=0;y<ints[0].length;y++){
+					int index=(y*ints.length+x);
+					ints[x][y]=array.get(index);//red
+				}
+			}
+		}
+		
+		//int[][] ints=byteDataIntConverter.convert(imageData); //convert color image to grayscale data
+		//int[][] data=lbpConverter.convert(ints);
+		int[] retInt=lbpConverter.dataToBinaryPattern(ints, edgeSize, edgeSize);
+		return retInt;
 	}
 	
 	private static int[] createLBPDepthFromImageData(ImageData imageData,boolean color){
@@ -3775,6 +4075,22 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		int[] retInt=lbpConverter.dataToBinaryPattern(ints, edgeSize, edgeSize);
 		return retInt;
 	}
+	
+	public static Vol createVolFromIndexes(int[] indexes){
+		
+		Vol vol=createNewVol();
+		//set vol
+		for(int i=0;i<indexes.length;i++){
+			double v=(double)indexes[i]/128-1; //max valu is 16x16(256) to range(-1 - 1)
+			if(v>1 || v<-1){
+				LogUtils.log("invalid");
+			}
+			vol.set(0, 0,i,v);
+		}
+		
+		return vol;
+	}
+	
 	private static Vol createLBPDepthVolFromImageData(ImageData imageData,boolean color){
 		if(imageData.getWidth()!=netWidth+edgeSize || imageData.getHeight()!=netHeight+edgeSize){ //somehow still 26x26 don't care!
 			Window.alert("invalid size:"+imageData.getWidth()+","+imageData.getHeight()+" expected "+(netWidth+edgeSize)+"x"+(netHeight+edgeSize));
@@ -3787,17 +4103,21 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		//LBP here,now no effect on but edge problem possible happen
 		
 		
+		int[] retInt=createLBPDepthFromImageData(imageData,color);
+		return createVolFromIndexes(retInt);
 		
 		
+		//Vol vol=createNewVol();
 		
-		Vol vol=createNewVol();
+		
 		
 		//bench4.start();
 		//int[] retInt=BinaryPattern.dataToBinaryPattern(data,lbpDataSplit,edgeSize,edgeSize);
 		//bench4.stop();
 		
-		int[] retInt=createLBPDepthFromImageData(imageData,color);
+		
 		//set vol
+		/*
 		for(int i=0;i<retInt.length;i++){
 			double v=(double)retInt[i]/128-1; //max valu is 16x16(256) to range(-1 - 1)
 			//double v=(double)retInt[i]/72-1;//maybe range(-1 - 1) //split must be 2 for 12x12(144) block <-- for 24x24
@@ -3813,7 +4133,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			//
 			//vol.set(0, 0,i,retInt[i]);//no normalize
 		}
-		
+		*/
 		//int r=getRandom(0, 100);
 		//if(r==50){
 			//LogUtils.log(Ints.join(",", retInt));
@@ -3829,7 +4149,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			}
 		}
 		*/
-		return vol;
+		//return vol;
 		
 		/*
 		int min=ints.length*ints[0].length;
@@ -3873,7 +4193,11 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		return values;
 	}
 	
-	
+	/**
+	 * @deprecated
+	 * @param imageData
+	 * @return
+	 */
 	private Vol createGrayscaleImageVolFromImageData(ImageData imageData){
 		if(imageData.getWidth()!=netWidth+edgeSize || imageData.getHeight()!=netHeight+edgeSize){ //somehow still 26x26 don't care!
 			Window.alert("invalid size:"+imageData.getWidth()+","+imageData.getHeight());

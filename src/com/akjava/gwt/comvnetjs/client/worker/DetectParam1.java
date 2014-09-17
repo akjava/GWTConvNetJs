@@ -2,22 +2,24 @@ package com.akjava.gwt.comvnetjs.client.worker;
 
 import java.util.List;
 
+import com.akjava.gwt.lib.client.JavaScriptUtils;
 import com.akjava.lib.common.graphics.Rect;
+import com.google.common.collect.Lists;
 import com.google.gwt.canvas.dom.client.ImageData;
 import com.google.gwt.core.client.JavaScriptObject;
 import com.google.gwt.core.client.JsArray;
 
-public  class DetectParam extends JavaScriptObject{
+public  class DetectParam1 extends JavaScriptObject{
 	
-	protected DetectParam(){}
+	protected DetectParam1(){}
 
 	
-	public static DetectParam create(String json,ImageData imageData,List<Rect> rects){
-		DetectParam param=createObject().cast();
+	public static DetectParam1 create(String json,JsArray<ImageData> imageDatas,List<Rect> rects){
+		DetectParam1 param=createObject().cast();
 		param.setJson(json);
 		
 		
-		param.setImageData(imageData);
+		param.setImageDatas(imageDatas);
 		
 		JsArray<HaarRect> rectArray=createArray().cast();
 		for(Rect rect:rects){
@@ -28,12 +30,12 @@ public  class DetectParam extends JavaScriptObject{
 		return param;
 	}
 	
-	public static DetectParam create(String json,ImageData imageDatas,JsArray<HaarRect> rectArray){
-		DetectParam param=createObject().cast();
+	public static DetectParam1 create(String json,JsArray<ImageData> imageDatas,JsArray<HaarRect> rectArray){
+		DetectParam1 param=createObject().cast();
 		param.setJson(json);
 		
 		
-		param.setImageData(imageDatas);
+		param.setImageDatas(imageDatas);
 		
 		
 		param.setRects(rectArray);
@@ -60,10 +62,10 @@ public  class DetectParam extends JavaScriptObject{
 	
 
 
-	public final  native ImageData getImageData()/*-{
+	public final  native JsArray<ImageData> getImageDatas()/*-{
 	return this.imageDatas;
 	}-*/;
-	public final  native void setImageData(JavaScriptObject  param)/*-{
+	public final  native void setImageDatas(JavaScriptObject  param)/*-{
 	this.imageDatas=param;
 	}-*/;
 	
