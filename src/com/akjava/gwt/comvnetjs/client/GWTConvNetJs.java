@@ -49,6 +49,7 @@ import com.akjava.gwt.lib.client.experimental.opencv.CVImageData;
 import com.akjava.gwt.lib.client.widget.PanelUtils;
 import com.akjava.gwt.lib.client.widget.cell.EasyCellTableObjects;
 import com.akjava.gwt.lib.client.widget.cell.SimpleCellTable;
+import com.akjava.gwt.webworker.client.Worker2;
 import com.akjava.gwt.webworker.client.WorkerPool;
 import com.akjava.gwt.webworker.client.WorkerPool.Uint8WorkerPoolData;
 import com.akjava.gwt.webworker.client.WorkerPool.WorkerPoolData;
@@ -106,7 +107,6 @@ import com.google.gwt.user.client.ui.Button;
 import com.google.gwt.user.client.ui.CheckBox;
 import com.google.gwt.user.client.ui.DockLayoutPanel;
 import com.google.gwt.user.client.ui.DoubleBox;
-import com.google.gwt.user.client.ui.FileUpload;
 import com.google.gwt.user.client.ui.HorizontalPanel;
 import com.google.gwt.user.client.ui.Image;
 import com.google.gwt.user.client.ui.IntegerBox;
@@ -1224,7 +1224,7 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 					}
 					@Override
 					public void extractData(WorkerPoolData data, MessageEvent event) {
-						JsArray<Uint8ArrayNative> arrays=event.getDataAsJavaScriptObject().cast();
+						JsArray<Uint8ArrayNative> arrays=Worker2.getDataAsJavaScriptObject(event).cast();
 						
 						extracted++;
 						
@@ -1276,7 +1276,7 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 							}
 
 							@Override
-							public void postData(Worker worker) {
+							public void postData(Worker2 worker) {
 								
 								worker.postMessage(param);
 							}
@@ -1611,7 +1611,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			int extracted;
 			@Override
 			public void extractData(WorkerPoolData data, MessageEvent event) {
-				MakeRectResult result=event.getDataAsJavaScriptObject().cast();
+				MakeRectResult result=Worker2.getDataAsJavaScriptObject(event).cast();
 				extracted++;
 				
 				List<Rect> rects=Lists.newArrayList();
@@ -1653,7 +1653,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 						}
 
 						@Override
-						public void postData(Worker worker) {
+						public void postData(Worker2 worker) {
 							worker.postMessage(MakeRectParam.create(data.getFileName(), image.getWidth(), image.getHeight(), 4, 1.4,minW,minH,min_scale));
 						}
 						
@@ -2019,7 +2019,7 @@ protected void doRepeat(boolean initial) {
 				
 			}
 		}
-		LogUtils.log("trained-positive:"+trained+ " negative="+negative+" ignored="+ignored+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
+		LogUtils.log("trained-positive:"+trained+ " negative="+negative+" ignored="+ignored+" time="+watch.elapsed(TimeUnit.SECONDS)+"s"+" remain-negative-images:"+negativesZip.getDatas().size());
 	}
 
 	
@@ -2351,7 +2351,7 @@ protected void doRepeat(boolean initial) {
 				List<Rect> rects=tmpMap.get(data.getParameterString(null));
 				rectArray.addAll(rects);
 				
-				JsArray<Uint8ArrayNative> arrays=event.getDataAsJavaScriptObject().cast();
+				JsArray<Uint8ArrayNative> arrays=Worker2.getDataAsJavaScriptObject(event).cast();
 				
 				
 				
@@ -2445,7 +2445,7 @@ protected void doRepeat(boolean initial) {
 					}
 
 					@Override
-					public void postData(Worker worker) {
+					public void postData(Worker2 worker) {
 						
 						worker.postMessage(param,WorkerPool.createMessagePorts(imageData));//for single case
 					}
@@ -2508,7 +2508,7 @@ protected void doRepeat(boolean initial) {
 			int extracted;
 			@Override
 			public void extractData(WorkerPoolData data, MessageEvent event) {
-				JsArray<HaarRect> rects=event.getDataAsJavaScriptObject().cast();
+				JsArray<HaarRect> rects=Worker2.getDataAsJavaScriptObject(event).cast();
 				rectArrayList.add(rects);
 				
 				extracted++;
@@ -2587,7 +2587,7 @@ protected void doRepeat(boolean initial) {
 					}
 
 					@Override
-					public void postData(Worker worker) {
+					public void postData(Worker2 worker) {
 						
 						//JsArray<MessagePort> ports=transfers.cast();
 						worker.postMessage(param);
@@ -2643,7 +2643,7 @@ protected void doRepeat(boolean initial) {
 			int extracted;
 			@Override
 			public void extractData(WorkerPoolData data, MessageEvent event) {
-				JsArray<HaarRect> rects=event.getDataAsJavaScriptObject().cast();
+				JsArray<HaarRect> rects=Worker2.getDataAsJavaScriptObject(event).cast();
 				rectArrayList.add(rects);
 				
 				extracted++;
@@ -2723,7 +2723,7 @@ protected void doRepeat(boolean initial) {
 					}
 
 					@Override
-					public void postData(Worker worker) {
+					public void postData(Worker2 worker) {
 						
 						//JsArray<MessagePort> ports=transfers.cast();
 						worker.postMessage(param);
@@ -2774,7 +2774,7 @@ protected void doRepeat(boolean initial) {
 			int extracted;
 			@Override
 			public void extractData(WorkerPoolData data, MessageEvent event) {
-				JsArray<HaarRect> rects=event.getDataAsJavaScriptObject().cast();
+				JsArray<HaarRect> rects=Worker2.getDataAsJavaScriptObject(event).cast();
 				result.add(rects);
 				extracted++;
 				
@@ -2882,7 +2882,7 @@ protected void doRepeat(boolean initial) {
 					}
 
 					@Override
-					public void postData(Worker worker) {
+					public void postData(Worker2 worker) {
 						
 						//JsArray<MessagePort> ports=transfers.cast();
 						worker.postMessage(param);

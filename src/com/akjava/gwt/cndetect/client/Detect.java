@@ -1,8 +1,11 @@
 package com.akjava.gwt.cndetect.client;
 
+import java.util.List;
+
 import com.akjava.gwt.comvnetjs.client.CascadeNet;
 import com.akjava.gwt.comvnetjs.client.GWTConvNetJs;
 import com.akjava.gwt.comvnetjs.client.Net;
+import com.akjava.gwt.comvnetjs.client.RectGenerator;
 import com.akjava.gwt.comvnetjs.client.Vol;
 import com.akjava.gwt.comvnetjs.client.worker.DetectParam;
 import com.akjava.gwt.comvnetjs.client.worker.DetectParam1;
@@ -10,6 +13,7 @@ import com.akjava.gwt.comvnetjs.client.worker.HaarRect;
 import com.akjava.gwt.lib.client.LogUtils;
 import com.akjava.gwt.lib.client.experimental.ImageDataUtils;
 import com.akjava.gwt.lib.client.experimental.ResizeUtils;
+import com.akjava.lib.common.graphics.Rect;
 import com.google.gwt.canvas.dom.client.ImageData;
 import com.google.gwt.core.client.EntryPoint;
 import com.google.gwt.core.client.JavaScriptObject;
@@ -87,40 +91,48 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
     	ImageData imageData=param.getImageData();
     	if(param.getRects()==null){
     		//TODO get rect params
+    		int stepScale=4;
+    		double scale_factor=1.6;
+    		
+    		int minW=24;//at least get this from detector
+    		int minH=14;
+    		
+    		double min_scale=1.2;
     		//detectAll();
-    	}else{
-    		for(int i=0;i<param.getRects().length();i++){
-    			//log("start:"+i);
-    			HaarRect rect=param.getRects().get(i);
-    			
-    			Uint8ArrayNative cropped=ImageDataUtils.cropRedOnlyPacked(imageData, rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight());
-    			
-    			/*
-    			String debug="";
-    			for(int k=0;k<cropped.length();k++){
-    				debug+=cropped.get(k)+",";
-    			}
-    			LogUtils.log(debug);
-    			*/
-    			
-    			Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnlyPacked(cropped, rect.getWidth(), rect.getHeight(), 36,36);
-    			
-    			
-    			
-    			Vol vol=GWTConvNetJs.createVolFromIndexes(GWTConvNetJs.createLBPDepthFromUint8ArrayPacked(resized, false));
-    			
-    			double result=passAll(nets,vol);
-    			if(result!=-1){
-    				rect.setConfidence(result);
-        			resultRect.push(rect);
-    			}
-    			
-    			
-    			//dispose(imageData);
-    			
-    		}
+    		param.setRects(RectGenerator.generateHaarRect(imageData.getWidth(),imageData.getHeight(), stepScale, scale_factor,minW,minH,min_scale));
     		
     	}
+    	
+    	for(int i=0;i<param.getRects().length();i++){
+			//log("start:"+i);
+			HaarRect rect=param.getRects().get(i);
+			
+			Uint8ArrayNative cropped=ImageDataUtils.cropRedOnlyPacked(imageData, rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight());
+			
+			/*
+			String debug="";
+			for(int k=0;k<cropped.length();k++){
+				debug+=cropped.get(k)+",";
+			}
+			LogUtils.log(debug);
+			*/
+			
+			Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnlyPacked(cropped, rect.getWidth(), rect.getHeight(), 36,36);
+			
+			
+			
+			Vol vol=GWTConvNetJs.createVolFromIndexes(GWTConvNetJs.createLBPDepthFromUint8ArrayPacked(resized, false));
+			
+			double result=passAll(nets,vol);
+			if(result!=-1){
+				rect.setConfidence(result);
+    			resultRect.push(rect);
+			}
+			
+			
+			//dispose(imageData);
+			
+		}
     	
     	//log("detect");
     	//log(""+param.getImageDatas().length());
