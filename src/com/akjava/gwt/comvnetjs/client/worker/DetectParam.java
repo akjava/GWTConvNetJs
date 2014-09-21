@@ -6,6 +6,7 @@ import com.akjava.lib.common.graphics.Rect;
 import com.google.gwt.canvas.dom.client.ImageData;
 import com.google.gwt.core.client.JavaScriptObject;
 import com.google.gwt.core.client.JsArray;
+import com.google.gwt.core.client.JsArrayNumber;
 
 public  class DetectParam extends JavaScriptObject{
 	
@@ -41,6 +42,13 @@ public  class DetectParam extends JavaScriptObject{
 		return param;
 	}
 	
+	public final  native JsArrayNumber getDetectOption()/*-{
+	return this.detectOption;
+	}-*/;
+	public final  native void setDetectOption(JsArrayNumber  param)/*-{
+	this.detectOption=param;
+	}-*/;	
+	
 	
 	public final  native String getJson()/*-{
 	return this.json;
@@ -61,10 +69,10 @@ public  class DetectParam extends JavaScriptObject{
 
 
 	public final  native ImageData getImageData()/*-{
-	return this.imageDatas;
+	return this.imageData;
 	}-*/;
 	public final  native void setImageData(JavaScriptObject  param)/*-{
-	this.imageDatas=param;
+	this.imageData=param;
 	}-*/;
 	
 	public final static native JavaScriptObject toTransfer(JsArray<ImageData> imageDatas)/*-{

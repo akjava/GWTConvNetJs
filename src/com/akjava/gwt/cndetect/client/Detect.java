@@ -48,7 +48,7 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
    	 window=self;//not this.
    	 $wnd=self;//not this.
    	
-   	 self.importScripts("/convnet.js");//need dummy window
+   	 self.importScripts("/js/convnet.js");//need dummy window
    	 
       $workergwtbridge = function(str) {
       	 @com.akjava.gwt.cndetect.client.Detect::bridge(Lcom/google/gwt/core/client/JavaScriptObject;)(str);
@@ -91,13 +91,36 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
     	ImageData imageData=param.getImageData();
     	if(param.getRects()==null){
     		//TODO get rect params
+    		
+    		JsArrayNumber numbers=param.getDetectOption();
+    		
     		int stepScale=4;
     		double scale_factor=1.6;
     		
     		int minW=24;//at least get this from detector
-    		int minH=14;
+    		int minH=24;
     		
     		double min_scale=1.2;
+    		
+    		//duplidate
+    		if(numbers!=null){
+    			if(numbers.length()>0){
+    				stepScale=(int)numbers.get(0);
+    			}
+    			if(numbers.length()>1){
+    				scale_factor=numbers.get(1);
+    			}
+    			if(numbers.length()>2){
+    				minW=(int)numbers.get(2);
+    			}
+    			if(numbers.length()>3){
+    				minH=(int)numbers.get(3);
+    			}
+    			if(numbers.length()>4){
+    				min_scale=numbers.get(4);
+    			}
+    		}
+    		
     		//detectAll();
     		param.setRects(RectGenerator.generateHaarRect(imageData.getWidth(),imageData.getHeight(), stepScale, scale_factor,minW,minH,min_scale));
     		
