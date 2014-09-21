@@ -46,6 +46,7 @@ import com.akjava.gwt.lib.client.experimental.lbp.ByteImageDataIntConverter;
 import com.akjava.gwt.lib.client.experimental.lbp.ByteImageDataIntConverter.ImageDataToByteFunction;
 import com.akjava.gwt.lib.client.experimental.lbp.SimpleLBP;
 import com.akjava.gwt.lib.client.experimental.opencv.CVImageData;
+import com.akjava.gwt.lib.client.game.PointXY;
 import com.akjava.gwt.lib.client.widget.PanelUtils;
 import com.akjava.gwt.lib.client.widget.cell.EasyCellTableObjects;
 import com.akjava.gwt.lib.client.widget.cell.SimpleCellTable;
@@ -245,16 +246,25 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 				hpanel.add(new Label("Detect-canvas"));
 				hpanel.add(new Label("detect-width:"));
 				detectWidth = new IntegerBox();
-				detectWidth.setValue(24);
+				detectWidth.setValue(32);
 				detectWidth.setWidth("50px");
 				hpanel.add(detectWidth);
 				
 				hpanel.add(new Label("detect-height:"));
 				detectHeight = new IntegerBox();
-				detectHeight.setValue(14);
+				detectHeight.setValue(32);
 				detectHeight.setWidth("50px");
 				hpanel.add(detectHeight);
 				
+				Button resetDetectSizeBt=new Button("Reset",new ClickHandler() {
+					
+					@Override
+					public void onClick(ClickEvent event) {
+						detectWidth.setValue(positiveSize.x);
+						detectHeight.setValue(positiveSize.y);
+					}
+				});
+				hpanel.add(resetDetectSizeBt);
 				
 				
 				hpanel.add(new Label("step-size:"));
@@ -1684,6 +1694,8 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		
 	}
 
+	PointXY positiveSize;//middle of ratio create when load positives,use for reset
+	
 	private void loadPositiveZip() {
 		final String positiveImageName="pos_eye_closed_clip.zip";//for test
 		//final String positiveImageName="pos_eye_front_clip.zip";
@@ -1741,6 +1753,20 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 				
 				double average=Statics.average(ratios);
 				double middle=Statics.middle(ratios);
+				
+				int w=32;
+				int h=(int) (w/middle);
+				if(h%2==1){
+					if(h>w){
+						h--;
+					}else{
+						h++;
+					}
+				}
+				
+				positiveSize=new PointXY(w, h);
+				detectWidth.setValue(w);
+				detectHeight.setValue(h);
 				
 				LogUtils.log("Ratio:average="+average+",middle="+middle);
 				
@@ -2189,6 +2215,7 @@ protected void doRepeat(boolean initial) {
 	//List<Double> minrateValues=Lists.newArrayList();
 	
 	protected String toJson() {
+		//TODO switch to json-version
 		Joiner joiner=Joiner.on(",");
 		List<String> objects=Lists.newArrayList();
 		
@@ -2213,11 +2240,15 @@ protected void doRepeat(boolean initial) {
 		
 		//objects.add("\"minrates\":["+joiner.join(fvalues)+"]");
 		
-		//
+		//TODO check is value valid
+		objects.add("\"size\":\""+detectWidth.getValue()+"x"+detectHeight.getValue()+"\"");
 		
+		objects.add("\"cascadeconvnetFormat\":"+1.0);//
 		
 		return "{"+joiner.join(objects)+"}";
 	}
+	
+	
 
 	
 
