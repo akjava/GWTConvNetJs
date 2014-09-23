@@ -17,6 +17,7 @@ public abstract class StageControler {
 	public static final int MODE_INITIAL=0;
 	public static final int MODE_VARIATION=1;
 	public static final int MODE_REPEAT=2;
+	public static final int MODE_SEARCH_PASSED_IMAGES=3;
 	private int mode;
 	
 	private int ratio;
@@ -38,12 +39,30 @@ public abstract class StageControler {
 	private ScoreGroup phrageScoreGroup;
 	
 	private int variationSize=0;
+	private int needPassedImageSize;
+	private boolean initialImageSearch;
 	public boolean isCanceled() {
 		return canceled;
 	}
 	public void setCanceled(boolean canceled) {
 		this.canceled = canceled;
 	}
+	
+	private void setInitialSearchPassedImageMode(boolean initial){
+		mode=MODE_SEARCH_PASSED_IMAGES;
+		
+		initialImageSearch=initial;
+		if(initial){
+			needPassedImageSize=getNegativeCount()+(int) (getPositiveCount()*(1.0/ratio));
+			LogUtils.log("start-searching passed images:"+needPassedImageSize);
+		}else{
+			needPassedImageSize=(int) (getPositiveCount()*(1.0/ratio));
+			LogUtils.log("start-searching passed images-variation:"+(needPassedImageSize));
+		}
+		
+		searchWatch.reset();searchWatch.start();
+	}
+	Stopwatch searchWatch=Stopwatch.createUnstarted();
 	public void start(final LearningInfo learningInfo){
 		checkState(doing==false,"error somehow other thread runnning.");
 		//initialize;
@@ -51,9 +70,8 @@ public abstract class StageControler {
 		stage=0;
 		ratio=learningInfo.maxRatio;
 		learningTime=0;
-		mode=MODE_INITIAL;
-		phaseDatas=Lists.newArrayList();
 		
+		phaseDatas=Lists.newArrayList();
 		
 		
 		
@@ -65,6 +83,10 @@ public abstract class StageControler {
 		
 		final Score targetScore=new Score(learningInfo.firstMatchRate,learningInfo.firstFalseRate);
 		final Stopwatch watch=Stopwatch.createStarted();
+		
+		
+		setInitialSearchPassedImageMode(true);
+		
 		Timer timer=new Timer(){
 			@Override
 			public void run() {
@@ -96,22 +118,33 @@ public abstract class StageControler {
 				Score score=null;
 				if(mode==MODE_INITIAL){
 					LogUtils.log("initial-training:ratio="+ratio);
-					doTraining(ratio, true);
+					doTraining(ratio, true);//this trainedScore not have result,because do test search-image first
 					
 					variationSize=0;
 					learningTime=0;
 					mode=MODE_REPEAT;
+					
+					//how many need? test(100) + pos x ratio
 				}else if(mode==MODE_REPEAT){
 					score=repeating();
 					learningTime++;
 					
 					if(learningTime==learningInfo.maxLearning){
-						mode=MODE_VARIATION;
+						
+						mode=MODE_SEARCH_PASSED_IMAGES;
+						
+						
+						boolean initial=false;
+						
+						
 						//ratio has already incresed;
 						if(variationSize==learningInfo.maxVariation){
 							ratio--;
-							mode=MODE_INITIAL;
+							//mode=MODE_INITIAL;//TODO switch to MODE_SEARCH_PASSED_IMAGES
+							initial=true;
 						}
+						
+						setInitialSearchPassedImageMode(initial);
 						
 						needFinalyzePhrase=true;
 					}
@@ -121,8 +154,27 @@ public abstract class StageControler {
 					LogUtils.log("variation-training:ratio="+ratio+",variation="+(variationSize));
 					doTraining(ratio, false);
 					
+					
+					
 					learningTime=0;
 					mode=MODE_REPEAT;
+					
+					
+					
+					
+				}else if(mode==MODE_SEARCH_PASSED_IMAGES){
+					
+					int imageSize=searchPassedImages(initialImageSearch);//just call
+					if(imageSize>=needPassedImageSize){
+						LogUtils.log("finish-searching passed images:"+imageSize+",time="+searchWatch.elapsed(TimeUnit.SECONDS)+"s");
+						if(initialImageSearch){
+							mode=MODE_INITIAL;
+						}else{
+							mode=MODE_VARIATION;
+						}
+						
+						}
+					
 				}
 				
 				//score check
@@ -203,7 +255,7 @@ public abstract class StageControler {
 							
 							targetScore.falseRate=learningInfo.falseRate;//switch first special value to natural value
 							targetScore.matchRate=learningInfo.matchRate;
-							mode=MODE_INITIAL;
+							setInitialSearchPassedImageMode(true);
 							
 						}
 					}
@@ -307,7 +359,7 @@ public abstract class StageControler {
 	}
 	
 	public boolean clearScore(Score targetScore,Score score){
-		return score.matchRate>targetScore.matchRate && score.falseRate<targetScore.falseRate;
+		return score.matchRate>=targetScore.matchRate && score.falseRate<=targetScore.falseRate;
 	}
 	public abstract void onEndTraining(boolean reachedGoal);
 	
@@ -316,7 +368,10 @@ public abstract class StageControler {
 	public abstract Score doTraining(int positiveRatio, boolean initial);
 	public abstract Score repeating();
 	public abstract String makeJson();
+	public abstract int searchPassedImages(boolean isInitial);
 	
+	public abstract int getPositiveCount();
+	public abstract int getNegativeCount();
 	
 	public static class StageResult{
 	private int stage;
@@ -347,6 +402,7 @@ public abstract class StageControler {
 	}
 	
 	public static class Score{
+		
 		private double matchRate;
 		public double getMatchRate() {
 			return matchRate;
@@ -355,12 +411,12 @@ public abstract class StageControler {
 		public double getFalseRate() {
 			return falseRate;
 		}
-
 		public Score(double matchRate, double falseRate) {
-			super();
 			this.matchRate = matchRate;
 			this.falseRate = falseRate;
 		}
+
+		
 		private double falseRate;
 		
 		public String toString(){

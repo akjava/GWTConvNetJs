@@ -116,6 +116,7 @@ import com.google.gwt.user.client.ui.ListBox;
 import com.google.gwt.user.client.ui.Panel;
 import com.google.gwt.user.client.ui.RootLayoutPanel;
 import com.google.gwt.user.client.ui.ScrollPanel;
+import com.google.gwt.user.client.ui.ValueListBox;
 import com.google.gwt.user.client.ui.VerticalPanel;
 import com.google.gwt.webworker.client.MessageEvent;
 import com.google.gwt.webworker.client.Worker;
@@ -198,7 +199,8 @@ public class GWTConvNetJs implements EntryPoint {
 				HorizontalPanel topImageControlPanel=new HorizontalPanel();
 				topImageControlPanel.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
 				
-final ExecuteButton detectBt=new ExecuteButton("Detect") {
+				/*
+				final ExecuteButton detectBt=new ExecuteButton("Detect") {
 					
 					@Override
 					public void executeOnClick() {
@@ -209,9 +211,9 @@ final ExecuteButton detectBt=new ExecuteButton("Detect") {
 					}
 				};
 				detectBt.setEnabled(false);
+				*/
 				
-				
-final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
+detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 					
 					@Override
 					public void executeOnClick() {
@@ -230,8 +232,8 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 						imageDataUrl=text;
 						//ImageElementUtils.copytoCanvas(text, imageShowingCanvas);
 						
-						detectBt.setEnabled(true);//this is not smart should i separete?
-						detectBt.startExecute(true);
+						//detectBt.setEnabled(true);//this is not smart should i separete?
+						//detectWorkerBt.startExecute(false);
 						
 						//
 					}
@@ -275,7 +277,7 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 				
 				hpanel.add(new Label("initial-scale:"));
 				detectInitialScale = new DoubleBox();
-				detectInitialScale.setValue(1.4);
+				detectInitialScale.setValue(1.0);//now 32 based
 				detectInitialScale.setWidth("50px");
 				hpanel.add(detectInitialScale);
 				
@@ -290,7 +292,7 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 				root.add(topImageControlPanel);
 				
 				topImageControlPanel.add(detectWorkerBt);
-				topImageControlPanel.add(detectBt);
+				//topImageControlPanel.add(detectBt);
 				topImageControlPanel.add(new Label("select image(after that detection start automatic) recommend around 250x250.otherwise take too mauch time"));
 				topImageControlPanel.add(imageUpload);
 				return root;
@@ -399,6 +401,8 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 		mainPanel.add(bt3);
 		
 		
+		HorizontalPanel saveButtons=new HorizontalPanel();
+		mainPanel.add(saveButtons);
 		Button saveAllBt=new Button("Save All cascades",new ClickHandler() {
 			
 			@Override
@@ -409,7 +413,23 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 				mainPanel.add(downloadJson);
 			}
 		});
-		mainPanel.add(saveAllBt);
+		saveButtons.add(saveAllBt);
+		
+		Button saveReleaseBt=new Button("Save Release cascades(remove last one)",new ClickHandler() {
+			
+			@Override
+			public void onClick(ClickEvent event) {
+				List<CascadeNet> nets=Lists.newArrayList(cascades);
+				if(nets.size()>0){
+				nets.remove(nets.size()-1);
+				}
+				String json=toJson(nets);
+				
+				Anchor downloadJson=HTML5Download.get().generateTextDownloadLink(json, "cascades.json", "download cascades",true);
+				mainPanel.add(downloadJson);
+			}
+		});
+		saveButtons.add(saveReleaseBt);
 		
 		createRandomVolCheck = new CheckBox("use random vol");
 		createRandomVolCheck.setValue(true);
@@ -417,6 +437,7 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 
 			@Override
 			public void onValueChange(ValueChangeEvent<Boolean> event) {
+				LogUtils.log("createRandomVolCheck changed:"+event.getValue());
 				useRandomOnCreateVol=event.getValue();
 			}
 			
@@ -717,7 +738,21 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 		firstFalseRateBox.setWidth("40px");
 		firstFalseRateBox.setValue(0.2);
 		
+		List<Integer> offValues=Lists.newArrayList();
+		for(int i=2;i<=20;i++){
+			offValues.add(i);
+		}
 		
+		
+		
+		
+		
+		//for debug initial values
+				matchRateBox.setValue(0.99);
+				falseRateBox.setValue(0.4);
+				firstMatchRateBox.setValue(1.0);
+				firstFalseRateBox.setValue(0.05);
+				
 		
 		
 		final CheckBox useFirstSpecialValue=new CheckBox();
@@ -737,6 +772,12 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 		secondPanel.add(new Label("FirstFalseRate:"));
 		secondPanel.add(firstFalseRateBox);
 		
+		
+		secondPanel.add(new Label("auto off random on create-cascade level at "));
+		autoRandomOffStage = new ToStringValueListBox<Integer>(offValues);
+		autoRandomOffStage.setValue(6);
+		secondPanel.add(autoRandomOffStage);
+		
 
 		HorizontalPanel buttons=new HorizontalPanel();
 		panel.add(buttons);
@@ -744,6 +785,9 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 			Stopwatch watch=Stopwatch.createUnstarted();
 			@Override
 			public void executeOnClick() {
+				recycledNegatives.clear();
+				usedNegatives.clear();
+				
 				stageControler = new StageControler(){
 
 					@Override
@@ -766,6 +810,7 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 					public Score doTraining(int positiveRatio, boolean initial) {
 						
 						doTrain(positiveRatio,initial);
+						
 						TestResult result=doTestLastPositiveTrainedAll();
 						TestResult missHit=doTestCascadeReal(getLastCascade(),false);
 						
@@ -798,6 +843,21 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 					@Override
 					public String makeJson() {
 						return toJson();
+					}
+
+					@Override
+					public int searchPassedImages(boolean isInitial) {
+						return GWTConvNetJs.this.searchPassedImage(isInitial);
+					}
+
+					@Override
+					public int getPositiveCount() {
+						return positivesZip.getDatas().size()-droppedList.size();
+					}
+
+					@Override
+					public int getNegativeCount() {
+						return negativeTestSize;
 					}
 					
 				};
@@ -1436,7 +1496,7 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 	protected void doTestx() {
 
 		
-		
+		/*
 		StageControler controler=new StageControler(){
 			int stage=1;
 			double testBaseRatio=0.5;
@@ -1495,6 +1555,7 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 			}
 			
 		};
+		*/
 		
 	}
 	
@@ -1509,9 +1570,9 @@ final ExecuteButton detectWorkerBt=new ExecuteButton("Detect Worker") {
 			totalRect+=rects.size();
 			}
 		}
-		LogUtils.log("generate-time:"+watch.elapsed(TimeUnit.MILLISECONDS));
+		//LogUtils.log("generate-time:"+watch.elapsed(TimeUnit.MILLISECONDS));
 
-		return "negative-info:image="+negativesZip.getDatas().size()+" images,total-rect="+totalRect;
+		return "negative-info:remain "+totalRect+" rects of "+negativesZip.getDatas().size()+" images";
 	}
 
 	private void loadNegativeZip() {
@@ -1848,7 +1909,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 		CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),createNewNet(),null);
 		cascades.add(next);
 		
-		passedVols.clear();
+		passedVolsForTest.clear();
 		//trainPositiveOnly();
 		droppedList.addAll(temporalyIgnoreList);
 		temporalyIgnoreList.clear();
@@ -1856,6 +1917,15 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 		updateCascadeLabel();
 		
 		LogUtils.log(getNegativeInfo());
+		
+		//expired
+		usedNegatives.clear();
+		recycledNegatives.clear();
+		
+		//for auto
+		if(cascades.size()>=autoRandomOffStage.getValue()){
+			createRandomVolCheck.setValue(false);
+		}
 	}
 
 	public  static  final native Vol testb(double[] values) /*-{
@@ -1920,16 +1990,66 @@ protected void doRepeat(boolean initial) {
 		//LogUtils.log("trained-both:"+trained+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
 	}
 
+/**
+ * 
+ * usedNegatives
+
+clear on newcascade
+add & clear on initialize train
+
+add used as negative train.
+
+charged searchpassedImage
+ */
+	private List<PassedData> usedNegatives=Lists.newArrayList();
+	
+	private List<PassedData> recycledNegatives=Lists.newArrayList();
+
 	//int negIndex=1;
 	int maxNegIndex=2;
 	protected void doTrain(int rate,boolean initial) {
 		doTrain(rate,initial,false);
+	}
+	
+	boolean recyleWhenVariation=false;
+	
+	private int detectNegativeIndex(Vol neg){
+		
+		double total=0;
+		for(int i=0;i<neg.getLength();i++){
+			total+=neg.getW(i);
+		}
+		//try separate flat & active
+		int negIndex=1;
+		if(total>0){
+			if(total<0.5){
+				negIndex=3;
+			}else{
+				negIndex=4;
+			}
+		}else{
+			if(total>-0.5){
+				negIndex=2;
+			}
+			
+			
+		}
+		return negIndex;
 	}
 	protected void doTrain(int rate,boolean initial,boolean horizontal) {
 
 		if(initial){
 			lastLeaningList.clear();
 			}
+		
+		if(initial || recyleWhenVariation){
+			recycledNegatives.addAll(usedNegatives);
+			usedNegatives.clear();
+			ListUtils.shuffle(recycledNegatives);
+			if(recycledNegatives.size()!=0){//not initialize
+			LogUtils.log("recycledNegatives:"+recycledNegatives.size());
+			}
+		}
 		
 		trainedPositiveDatas.clear();
 		Stopwatch watch=Stopwatch.createStarted();
@@ -2008,6 +2128,12 @@ protected void doRepeat(boolean initial) {
 			
 				int m=trained%rate;
 				if(m==0){
+					
+					PassedData negativeData=null;
+					if(recycledNegatives.size()>0){
+						negativeData=recycledNegatives.remove(0);
+					}else{
+					
 				//	LogUtils.log(trained+","+rate);
 					Optional<Vol> optional=createRandomVol(getLastCascade());
 					if(!optional.isPresent()){
@@ -2033,10 +2159,17 @@ protected void doRepeat(boolean initial) {
 					if(total>-0.5){
 						negIndex=2;
 					}
+					
+					
 				}
+				negativeData=new PassedData(neg, negIndex);
+					}
 				
-				getLastCascade().getTrainer().train(neg, negIndex);
-				lastLeaningList.add(new PassedData(neg, negIndex));
+				getLastCascade().getTrainer().train(negativeData.getVol(), negativeData.getClassIndex());
+				
+				lastLeaningList.add(negativeData);//for repeat
+				
+				usedNegatives.add(negativeData);//for recyle
 				negative++;
 			
 					
@@ -2200,7 +2333,7 @@ protected void doRepeat(boolean initial) {
 				}	
 				
 				
-		passedVols.clear();
+		passedVolsForTest.clear();
 		temporalyIgnoreList.clear();
 		trainedPositiveDatas.clear();		
 				
@@ -2215,6 +2348,9 @@ protected void doRepeat(boolean initial) {
 	//List<Double> minrateValues=Lists.newArrayList();
 	
 	protected String toJson() {
+		return toJson(cascades);
+	}
+	protected String toJson(List<CascadeNet> cascades) {
 		//TODO switch to json-version
 		Joiner joiner=Joiner.on(",");
 		List<String> objects=Lists.newArrayList();
@@ -2563,6 +2699,7 @@ protected void doRepeat(boolean initial) {
 					LogUtils.log("create-image-data-time:"+watch2.elapsed(TimeUnit.MILLISECONDS)+" "+createImageDataLogBuffer.toString());
 					LogUtils.log("total-detect-time:"+detectStopwatch.elapsed(TimeUnit.MILLISECONDS)+"ms");
 					terminateAll();
+					detectWorkerBt.setEnabled(true);
 				}
 				
 				
@@ -3611,7 +3748,7 @@ protected void doRepeat(boolean initial) {
 	*/
 	boolean trainSecond;
 	
-	List<PassedData> passedVols=Lists.newArrayList();
+	List<PassedData> passedVolsForTest=Lists.newArrayList();
 	
 	
 	
@@ -3778,7 +3915,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		}
 		
 		//create new negative datas
-		if(passedVols.size()==0){
+		if(passedVolsForTest.size()==0){
 			stopWatch.stop();
 			Stopwatch stopWatch2=Stopwatch.createStarted();
 			for(int i=0;i<testNumber;i++){
@@ -3788,8 +3925,8 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 					throw new RuntimeException("invalid data");
 				}
 				Vol vol=optionalR.get();
-				passedVols.add(new PassedData(vol,lastDataUrl));
-				dummyCascadeForKeepNegativeTrained.getTrainer().train(vol, 1);//dummy train.maybe generate inner.
+				passedVolsForTest.add(new PassedData(vol,lastDataUrl));
+				//dummyCascadeForKeepNegativeTrained.getTrainer().train(vol, 1);//dummy train.maybe generate inner.
 			}
 			LogUtils.log("generate-parent-filter passed vol:"+ stopWatch2.elapsed(TimeUnit.SECONDS)+"s");
 			stopWatch.start();
@@ -3797,8 +3934,8 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		}
 		
 		for(int i=0;i<testNumber;i++){
-			String imageDataUrl=passedVols.get(i).getDataUrl();
-			Vol vol=passedVols.get(i).getVol();
+			String imageDataUrl=passedVolsForTest.get(i).getDataUrl();
+			Vol vol=passedVolsForTest.get(i).getVol();
 			Vol result= cascade.getNet().forward(vol,true);//i'm not sure trained true no effect on result,i guess this mean use just cached inside
 			if(i==0){
 			//LogUtils.log(vol);
@@ -3825,6 +3962,40 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		
 		return result;
 	}
+
+
+public int negativeTestSize=100;
+/*
+ * new search passed image action
+ */
+	public int searchPassedImage(boolean isInitial){
+		
+		//TODO support out of image;
+		
+		//just search don't care doesn't find or faild pass 
+		CascadeNet cascadeNet=getLastCascade();
+		Optional<Vol> randomVol=createRandomVol();//random or orderd
+		for(Vol vol:randomVol.asSet()){
+			Optional<Vol> optional=cascadeNet.filterParents(vol);
+			for(Vol passed:optional.asSet()){
+				if(passedVolsForTest.size()<negativeTestSize){//make test first
+					//this PassedData no need index,just test and must be not 0
+					passedVolsForTest.add(new PassedData(passed,lastDataUrl));
+				}else{
+					recycledNegatives.add(new PassedData(passed,detectNegativeIndex(passed)));
+				}
+			}
+		}
+		
+		if(isInitial){
+		return passedVolsForTest.size()+usedNegatives.size()+recycledNegatives.size();	
+		}else{
+		return recycledNegatives.size();
+		}
+	}
+	
+
+
 
 	public void doTestCascade(CascadeNet cascade){
 		
@@ -3920,7 +4091,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	//private ExecuteButton analyzeBt;
 	private FileUploadForm netUploadBt;
 	
-	private String lastDataUrl;
+	private String lastDataUrl;//create if random vol 
 	
 	private Map<String,ImageElement> imageElementMap=new HashMap<String, ImageElement>();
 	
@@ -3931,7 +4102,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	private CVImageData lastData;
 	public Optional<Vol> createRandomVol(){
 		Stopwatch watch=Stopwatch.createStarted();
-		for(int j=0;j<20;j++){
+		for(int j=0;j<20;j++){ //just check image exist
 		int index=useRandomOnCreateVol?getRandom(0, negativesZip.size()):0;
 		
 		CVImageData pdata=negativesZip.get(index);
@@ -3992,7 +4163,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			//rects.add(r);///stop looping
 			if(rects.size()==0){
 				negativesZip.getDatas().remove(pdata);//remove permanently,if neee use,do refrash page
-				LogUtils.log("rect is empty removed:"+pdata.getFileName());
+				LogUtils.log("rect is empty removed:"+pdata.getFileName()+","+getNegativeInfo());
 			}
 			//LogUtils.log(r);
 			
@@ -4034,6 +4205,10 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	private CheckBox createRandomVolCheck;
 
 	private Label negativeZipLabel;
+
+	private ToStringValueListBox<Integer> autoRandomOffStage;
+
+	private ExecuteButton detectWorkerBt;
 	public static Vol createVolFromImageData(ImageData imageData){
 		//return createGrayscaleImageVolFromImageData(imageData);
 		return createLBPDepthVolFromImageData(imageData,true);
