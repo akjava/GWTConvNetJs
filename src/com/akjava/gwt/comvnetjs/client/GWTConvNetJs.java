@@ -2775,7 +2775,7 @@ charged searchpassedImage
 			}
 			
 		};
-		LogUtils.log("call");
+		
 		multiCaller.start(10);
 		
 	}
