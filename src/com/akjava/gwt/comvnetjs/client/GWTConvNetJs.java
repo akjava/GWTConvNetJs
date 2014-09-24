@@ -223,6 +223,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 						detectImageWithWorker(imageShowingCanvas,detectStepSize.getValue(),detectScaleFactor.getValue());
 					}
 				};
+				detectWorkerBt.setEnabled(false);//
 				
 				
 				FileUploadForm imageUpload= FileUtils.createSingleFileUploadForm(new DataURLListener() {
@@ -237,6 +238,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 						
 						//
 						ImageElementUtils.copytoCanvas(imageDataUrl, imageShowingCanvas);//clear rects
+						detectWorkerBt.setEnabled(true);
 					}
 				}, true);
 				
