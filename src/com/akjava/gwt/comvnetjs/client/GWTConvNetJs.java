@@ -236,6 +236,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 						//detectWorkerBt.startExecute(false);
 						
 						//
+						ImageElementUtils.copytoCanvas(imageDataUrl, imageShowingCanvas);//clear rects
 					}
 				}, true);
 				

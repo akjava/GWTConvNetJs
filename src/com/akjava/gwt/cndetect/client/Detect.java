@@ -130,7 +130,7 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
 			//log("start:"+i);
 			HaarRect rect=param.getRects().get(i);
 			
-			Uint8ArrayNative cropped=ImageDataUtils.cropRedOnlyPacked(imageData, rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight());
+			//Uint8ArrayNative cropped=ImageDataUtils.cropRedOnlyPacked(imageData, rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight());
 			
 			/*
 			String debug="";
@@ -140,7 +140,10 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
 			LogUtils.log(debug);
 			*/
 			
-			Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnlyPacked(cropped, rect.getWidth(), rect.getHeight(), 36,36);
+			//Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnlyPacked(cropped, rect.getWidth(), rect.getHeight(), 36,36);
+			
+			//little bit improved when
+			Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnly(imageData,rect.getX(),rect.getY(), rect.getWidth(), rect.getHeight(), 36,36);
 			
 			
 			
