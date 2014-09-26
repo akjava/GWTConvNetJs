@@ -4285,12 +4285,36 @@ public int negativeTestSize=100;
 		return retInt;
 	}
 	
+	/*
+	 * this is fixed max value 256 16x16 block
+	 */
 	public static Vol createVolFromIndexes(int[] indexes){
 		
 		Vol vol=createNewVol();
 		//set vol
 		for(int i=0;i<indexes.length;i++){
 			double v=(double)indexes[i]/128-1; //max valu is 16x16(256) to range(-1 - 1)
+			if(v>1 || v<-1){
+				LogUtils.log("invalid");
+			}
+			vol.set(0, 0,i,v);
+		}
+		
+		return vol;
+	}
+	
+	/**
+	 * 
+	 * @param indexes
+	 * @param maxValue if pixel is 16x16 max=256
+	 * @return
+	 */
+	public static Vol createVolFromIndexes(int[] indexes,int maxValue){
+		int half=maxValue/2;
+		Vol vol=createNewVol();
+		//set vol
+		for(int i=0;i<indexes.length;i++){
+			double v=(double)indexes[i]/half-1; //max valu is 16x16(256) to range(-1 - 1)
 			if(v>1 || v<-1){
 				LogUtils.log("invalid");
 			}
