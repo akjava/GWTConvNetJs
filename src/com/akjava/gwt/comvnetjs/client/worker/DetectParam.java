@@ -42,6 +42,20 @@ public  class DetectParam extends JavaScriptObject{
 		return param;
 	}
 	
+	public final  native boolean isUseHorizontalFlip()/*-{
+	return this.useHorizontalFlip;
+	}-*/;
+	public final  native void setUseHorizontalFlip(boolean  param)/*-{
+	this.useHorizontalFlip=param;
+	}-*/;	
+	
+	public final  native JsArrayNumber getTurnAngles()/*-{
+	return this.turnAngles;
+	}-*/;
+	public final  native void setTurnAngles(JsArrayNumber  param)/*-{
+	this.turnAngles=param;
+	}-*/;	
+	
 	public final  native JsArrayNumber getDetectOption()/*-{
 	return this.detectOption;
 	}-*/;

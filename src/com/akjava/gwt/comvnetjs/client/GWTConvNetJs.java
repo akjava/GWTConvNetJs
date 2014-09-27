@@ -168,6 +168,10 @@ public class GWTConvNetJs implements EntryPoint {
 	private  Canvas lbpCanvas=Canvas.createIfSupported();//
 	
 	private String imageDataUrl;
+
+	private CheckBox use45AngleCheck;
+
+	private CheckBox use90AngleCheck;
 	public class LBPImageZip extends CVImageZip{
 		private ByteImageDataIntConverter converter=new ByteImageDataIntConverter(lbpCanvas.getContext2d(),true);
 	
@@ -298,6 +302,16 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 				//topImageControlPanel.add(detectBt);
 				topImageControlPanel.add(new Label("select image(after that detection start automatic) recommend around 250x250.otherwise take too mauch time"));
 				topImageControlPanel.add(imageUpload);
+				
+				
+				useHorizontalFlipCheck = new CheckBox("horizontal flip");
+				topImageControlPanel.add(useHorizontalFlipCheck);
+				
+				use45AngleCheck = new CheckBox("turn(45,135,225,315)");
+				topImageControlPanel.add(use45AngleCheck);
+				use90AngleCheck = new CheckBox("turn(90,180,270)");
+				topImageControlPanel.add(use90AngleCheck);
+				
 				return root;
 	}
 	
@@ -2747,6 +2761,20 @@ charged searchpassedImage
 				
 				
 				final DetectParam param=DetectParam.create(json, grayScaleImageData, rectArray);
+				param.setUseHorizontalFlip(useHorizontalFlipCheck.getValue());
+				JsArrayNumber turns=JavaScriptObject.createArray().cast();
+				if(use45AngleCheck.getValue()){
+					turns.push(45);
+					turns.push(135);
+					turns.push(225);
+					turns.push(315);
+				}
+				if(use90AngleCheck.getValue()){
+					turns.push(90);
+					turns.push(180);
+					turns.push(270);
+				}
+				param.setTurnAngles(turns);
 			//	final JavaScriptObject transfers=WorkerPool.createMessagePorts(grayScaleImageData);
 				
 				WorkerPoolData poolData=new WorkerPoolData(){
@@ -4212,6 +4240,8 @@ public int negativeTestSize=100;
 	private ToStringValueListBox<Integer> autoRandomOffStage;
 
 	private ExecuteButton detectWorkerBt;
+
+	private CheckBox useHorizontalFlipCheck;
 	public static Vol createVolFromImageData(ImageData imageData){
 		//return createGrayscaleImageVolFromImageData(imageData);
 		return createLBPDepthVolFromImageData(imageData,true);

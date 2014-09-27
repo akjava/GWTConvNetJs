@@ -90,6 +90,15 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
     	JsArray<Net> nets=jsonToNet(param.getJson());
     	
     	ImageData imageData=param.getImageData();
+    	
+    	boolean useHorizontalFlip=param.isUseHorizontalFlip();
+    	JsArrayNumber turnAngles=param.getTurnAngles();
+    	if(turnAngles==null){//empty
+    		turnAngles=JavaScriptObject.createArray().cast();
+    	}
+    	
+    	LogUtils.log("horizontal:"+useHorizontalFlip+",angles="+turnAngles.length());
+    	
     	if(param.getRects()==null){
     		//TODO get rect params
     		
@@ -155,17 +164,52 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
 			if(result!=-1){
 				rect.setConfidence(result);
     			resultRect.push(rect);
-			}else{
-				
-				//flip horizontal check
-				Vol flipped=GWTConvNetJs.createVolFromIndexes(SimpleLBP.flipHorizontal(binaryPattern,GWTConvNetJs.lbpDataSplit,GWTConvNetJs.lbpDataSplit),GWTConvNetJs.parseMaxLBPValue());
+			}
+			
+			if(result==-1){
+				for(int j=0;j<turnAngles.length();j++){
+					int[] turned=SimpleLBP.turn3x3(binaryPattern, (int)turnAngles.get(j));
+					Vol turnedVol=GWTConvNetJs.createVolFromIndexes(turned,GWTConvNetJs.parseMaxLBPValue());
+					result=passAll(nets,turnedVol);
+					if(result!=-1){
+						rect.setConfidence(result);
+		    			resultRect.push(rect);
+		    			break;
+					}
+				}
+			}
+			
+			if(result==-1 && useHorizontalFlip){
+				int[] flippedPattern=SimpleLBP.flipHorizontal(binaryPattern,GWTConvNetJs.lbpDataSplit,GWTConvNetJs.lbpDataSplit);
+				Vol flipped=GWTConvNetJs.createVolFromIndexes(flippedPattern,GWTConvNetJs.parseMaxLBPValue());
 				double result2=passAll(nets,flipped);
 				if(result!=-1){
 					rect.setConfidence(result2);
 	    			resultRect.push(rect);
+				}else{
+					//angles
+					for(int j=0;j<turnAngles.length();j++){
+						int[] turned=SimpleLBP.turn3x3(flippedPattern, (int)turnAngles.get(j));
+						Vol turnedVol=GWTConvNetJs.createVolFromIndexes(turned,GWTConvNetJs.parseMaxLBPValue());
+						result=passAll(nets,turnedVol);
+						if(result!=-1){
+							rect.setConfidence(result);
+			    			resultRect.push(rect);
+			    			break;
+						}
+					}
 				}
+			}
+			
+			
+			/*
+			}else{
+				
+				//flip horizontal check
+				
 				
 			}
+			*/
 			
 			
 			//dispose(imageData);
