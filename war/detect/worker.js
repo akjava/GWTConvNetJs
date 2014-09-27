@@ -52,10 +52,14 @@ function $exportBridge(){
 }
 
 function detect(param){
-  var binaryPattern, flipped, i_0, imageData, minH, minW, min_scale, nets, numbers, rect, resized, result, resultRect, scale_factor, stepScale, vol;
+  var binaryPattern, flipped, flippedPattern, i_0, imageData, j, minH, minW, min_scale, nets, numbers, rect, resized, result, resultRect, scale_factor, stepScale, turnAngles, turned, turnedVol, useHorizontalFlip, vol;
   resultRect = [];
   nets = jsonToNet(param.json);
   imageData = param.imageData;
+  useHorizontalFlip = param.useHorizontalFlip;
+  turnAngles = param.turnAngles;
+  !turnAngles && (turnAngles = []);
+  log('horizontal:' + useHorizontalFlip + ',angles=' + turnAngles.length);
   if (!param.rects) {
     numbers = param.detectOption;
     stepScale = 4;
@@ -82,9 +86,32 @@ function detect(param){
       rect.confidence = result;
       $push(resultRect, rect);
     }
-     else {
-      flipped = createVolFromIndexes(flipHorizontal(binaryPattern), 64);
+    if (result == -1) {
+      for (j = 0; j < turnAngles.length; ++j) {
+        turned = turn3x3(binaryPattern, round_int(turnAngles[j]));
+        turnedVol = createVolFromIndexes(turned, 64);
+        result = passAll(nets, turnedVol);
+        if (result != -1) {
+          rect.confidence = result;
+          $push(resultRect, rect);
+          break;
+        }
+      }
+    }
+    if (result == -1 && useHorizontalFlip) {
+      flippedPattern = flipHorizontal(binaryPattern);
+      flipped = createVolFromIndexes(flippedPattern, 64);
       passAll(nets, flipped);
+      for (j = 0; j < turnAngles.length; ++j) {
+        turned = turn3x3(flippedPattern, round_int(turnAngles[j]));
+        turnedVol = createVolFromIndexes(turned, 64);
+        result = passAll(nets, turnedVol);
+        if (result != -1) {
+          rect.confidence = result;
+          $push(resultRect, rect);
+          break;
+        }
+      }
     }
   }
   self.postMessage(resultRect);
@@ -235,6 +262,7 @@ function $clinit_SimpleLBP(){
   $clinit_SimpleLBP = nullMethod;
   atx = initValues(_3I_classLit, CM$, -1, [-1, 0, 1, 1, 1, 0, -1, -1]);
   aty = initValues(_3I_classLit, CM$, -1, [-1, -1, -1, 0, 1, 1, 1, 0]);
+  turnoffsets = initDims([_3_3_3Ljava_lang_Integer_2_classLit, _3_3Ljava_lang_Integer_2_classLit, _3Ljava_lang_Integer_2_classLit], [CM$, CM$, CM$], [Q$Object, Q$Object, Q$Object], [3, 3, 8], 3, 0);
 }
 
 function $dataToBinaryPattern(this$static, arrays){
@@ -307,6 +335,23 @@ function SimpleLBP_0(){
   this.container = initDims([_3_3I_classLit, _3I_classLit], [CM$, CM$], [Q$Object, -1], [3, 3], 2, 1);
 }
 
+function findNewTurnOffset(sx, sy, move){
+  var i_0, v, x, y;
+  if (turnoffsets[sx][sy][move]) {
+    return turnoffsets[sx][sy][move].value;
+  }
+  x = sx;
+  y = sy;
+  if (sx != 1 || sy != 1) {
+    for (i_0 = 0; i_0 < move; ++i_0) {
+      x == 0?y > 0?--y:++x:x == 1?y == 0?++x:--x:x == 2 && (y < 2?++y:--x);
+    }
+  }
+  v = (y * 3 + x) * 8;
+  turnoffsets[sx][sy][move] = valueOf(v);
+  return v;
+}
+
 function flipHorizontal(binaryPattern){
   $clinit_SimpleLBP();
   var converted, destOffset, i_0, nindex, srcOffset, x, y;
@@ -350,11 +395,34 @@ function flipHorizontal(binaryPattern){
   return converted;
 }
 
+function turn3x3(binaryPattern, angle){
+  $clinit_SimpleLBP();
+  var destOffset, i_0, move, newIndex, result, srcOffset, x, y;
+  if (binaryPattern.length != 72) {
+    return null;
+  }
+  result = initDim(_3I_classLit, CM$, -1, 72, 1);
+  angle < 0 && (angle = 360 + angle);
+  move = ~~(angle / 45);
+  for (y = 0; y < 3; ++y) {
+    for (x = 0; x < 3; ++x) {
+      srcOffset = (y * 3 + x) * 8;
+      destOffset = findNewTurnOffset(x, y, move);
+      for (i_0 = 0; i_0 < 8; ++i_0) {
+        newIndex = i_0 + move;
+        newIndex >= 8 && (newIndex -= 8);
+        result[destOffset + newIndex] = binaryPattern[srcOffset + i_0];
+      }
+    }
+  }
+  return result;
+}
+
 defineSeed(20, 1, {}, SimpleLBP_0);
 _.container = null;
 _.neighbor = 0;
 _.useImprovedLBP = true;
-var atx, aty;
+var atx, aty, turnoffsets;
 function Rect_0(width, height){
   this.x_0 = 0;
   this.y_0 = 0;
@@ -803,6 +871,30 @@ function IllegalStateException_0(){
 }
 
 defineSeed(56, 30, makeCastMap([Q$Throwable]), IllegalStateException_0);
+defineSeed(58, 1, {});
+function Integer_0(value){
+  this.value = value;
+}
+
+function valueOf(i_0){
+  var rebase, result;
+  if (i_0 > -129 && i_0 < 128) {
+    rebase = i_0 + 128;
+    result = ($clinit_Integer$BoxedValues() , boxedValues)[rebase];
+    !result && (result = boxedValues[rebase] = new Integer_0(i_0));
+    return result;
+  }
+  return new Integer_0(i_0);
+}
+
+defineSeed(57, 58, {}, Integer_0);
+_.value = 0;
+function $clinit_Integer$BoxedValues(){
+  $clinit_Integer$BoxedValues = nullMethod;
+  boxedValues = initDim(_3Ljava_lang_Integer_2_classLit, CM$, Q$Object, 256, 0);
+}
+
+var boxedValues;
 function NullPointerException_0(){
   $fillInStackTrace();
 }
@@ -811,11 +903,11 @@ function NullPointerException_1(){
   $fillInStackTrace();
 }
 
-defineSeed(57, 30, makeCastMap([Q$Throwable]), NullPointerException_0, NullPointerException_1);
+defineSeed(60, 30, makeCastMap([Q$Throwable]), NullPointerException_0, NullPointerException_1);
 function StackTraceElement_0(methodName){
 }
 
-defineSeed(58, 1, {}, StackTraceElement_0);
+defineSeed(61, 1, {}, StackTraceElement_0);
 function $indexOf(this$static, str){
   return this$static.indexOf(str);
 }
@@ -847,14 +939,14 @@ function gwtOnLoad(errFn, modName, modBase, softPermutationId){
   }
 }
 
-var Ljava_lang_Object_2_classLit = createForClass('java.lang.', 'Object', 1), Lcom_google_gwt_core_client_JavaScriptObject_2_classLit = createForClass('com.google.gwt.core.client.', 'JavaScriptObject$', 8), _3I_classLit = createForArray('', '[I', 59), Ljava_lang_Throwable_2_classLit = createForClass('java.lang.', 'Throwable', 32), Ljava_lang_Exception_2_classLit = createForClass('java.lang.', 'Exception', 31), Ljava_lang_RuntimeException_2_classLit = createForClass('java.lang.', 'RuntimeException', 30), Ljava_lang_StackTraceElement_2_classLit = createForClass('java.lang.', 'StackTraceElement', 58), _3Ljava_lang_StackTraceElement_2_classLit = createForArray('[Ljava.lang.', 'StackTraceElement;', 60), Lcom_google_gwt_lang_SeedUtil_2_classLit = createForClass('com.google.gwt.lang.', 'SeedUtil', 49), Ljava_lang_Class_2_classLit = createForClass('java.lang.', 'Class', 54), Ljava_lang_String_2_classLit = createForClass('java.lang.', 'String', 2), Ljava_lang_ClassCastException_2_classLit = createForClass('java.lang.', 'ClassCastException', 55), Lcom_google_gwt_core_client_JavaScriptException_2_classLit = createForClass('com.google.gwt.core.client.', 'JavaScriptException', 29), Lcom_google_gwt_core_client_Scheduler_2_classLit = createForClass('com.google.gwt.core.client.', 'Scheduler', 36), Lcom_google_gwt_core_client_impl_SchedulerImpl_2_classLit = createForClass('com.google.gwt.core.client.impl.', 'SchedulerImpl', 38), _3_3I_classLit = createForArray('', '[[I', 61), Lcom_akjava_lib_common_graphics_Rect_2_classLit = createForClass('com.akjava.lib.common.graphics.', 'Rect', 21), Lcom_akjava_gwt_lib_client_experimental_lbp_SimpleLBP_2_classLit = createForClass('com.akjava.gwt.lib.client.experimental.lbp.', 'SimpleLBP', 20), Ljava_lang_NullPointerException_2_classLit = createForClass('java.lang.', 'NullPointerException', 57), Lcom_google_common_base_Stopwatch_2_classLit = createForClass('com.google.common.base.', 'Stopwatch', 23), Ljava_lang_IllegalStateException_2_classLit = createForClass('java.lang.', 'IllegalStateException', 56), Lcom_google_common_base_Ticker_2_classLit = createForClass('com.google.common.base.', 'Ticker', 24), Lcom_google_common_base_Ticker$1_2_classLit = createForClass('com.google.common.base.', 'Ticker$1', 25);
+var Ljava_lang_Object_2_classLit = createForClass('java.lang.', 'Object', 1), Lcom_google_gwt_core_client_JavaScriptObject_2_classLit = createForClass('com.google.gwt.core.client.', 'JavaScriptObject$', 8), _3I_classLit = createForArray('', '[I', 62), Ljava_lang_Throwable_2_classLit = createForClass('java.lang.', 'Throwable', 32), Ljava_lang_Exception_2_classLit = createForClass('java.lang.', 'Exception', 31), Ljava_lang_RuntimeException_2_classLit = createForClass('java.lang.', 'RuntimeException', 30), Ljava_lang_StackTraceElement_2_classLit = createForClass('java.lang.', 'StackTraceElement', 61), _3Ljava_lang_StackTraceElement_2_classLit = createForArray('[Ljava.lang.', 'StackTraceElement;', 63), Lcom_google_gwt_lang_SeedUtil_2_classLit = createForClass('com.google.gwt.lang.', 'SeedUtil', 49), Ljava_lang_Number_2_classLit = createForClass('java.lang.', 'Number', 58), Ljava_lang_Class_2_classLit = createForClass('java.lang.', 'Class', 54), Ljava_lang_Integer_2_classLit = createForClass('java.lang.', 'Integer', 57), _3Ljava_lang_Integer_2_classLit = createForArray('[Ljava.lang.', 'Integer;', 64), Ljava_lang_String_2_classLit = createForClass('java.lang.', 'String', 2), Ljava_lang_ClassCastException_2_classLit = createForClass('java.lang.', 'ClassCastException', 55), Lcom_google_gwt_core_client_JavaScriptException_2_classLit = createForClass('com.google.gwt.core.client.', 'JavaScriptException', 29), Lcom_google_gwt_core_client_Scheduler_2_classLit = createForClass('com.google.gwt.core.client.', 'Scheduler', 36), Lcom_google_gwt_core_client_impl_SchedulerImpl_2_classLit = createForClass('com.google.gwt.core.client.impl.', 'SchedulerImpl', 38), _3_3I_classLit = createForArray('', '[[I', 65), Lcom_akjava_lib_common_graphics_Rect_2_classLit = createForClass('com.akjava.lib.common.graphics.', 'Rect', 21), _3_3Ljava_lang_Integer_2_classLit = createForArray('[[Ljava.lang.', 'Integer;', 66), _3_3_3Ljava_lang_Integer_2_classLit = createForArray('[[[Ljava.lang.', 'Integer;', 67), Lcom_akjava_gwt_lib_client_experimental_lbp_SimpleLBP_2_classLit = createForClass('com.akjava.gwt.lib.client.experimental.lbp.', 'SimpleLBP', 20), Ljava_lang_NullPointerException_2_classLit = createForClass('java.lang.', 'NullPointerException', 60), Lcom_google_common_base_Stopwatch_2_classLit = createForClass('com.google.common.base.', 'Stopwatch', 23), Ljava_lang_IllegalStateException_2_classLit = createForClass('java.lang.', 'IllegalStateException', 56), Lcom_google_common_base_Ticker_2_classLit = createForClass('com.google.common.base.', 'Ticker', 24), Lcom_google_common_base_Ticker$1_2_classLit = createForClass('com.google.common.base.', 'Ticker$1', 25);
 
 var $stats = function(){};
 var $sessionId = function(){};
 var navigator = {};
 navigator.userAgent = 'timobile';
-$strongName = '9FE891CCFCC8E94CD9F5A56B3F271503';
-$ti4jCompilationDate = 1411797809203;
+$strongName = 'C2FD1CAEEF5F8D4DFF219D2C85A3DCAA';
+$ti4jCompilationDate = 1411808770787;
 $wnd.Array = function(){};
 self.addEventListener('message', function(e) {   $workergwtbridge(e.data); }, false);
 gwtOnLoad(null,'detect',null);
