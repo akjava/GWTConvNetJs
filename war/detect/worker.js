@@ -59,7 +59,6 @@ function detect(param){
   useHorizontalFlip = param.useHorizontalFlip;
   turnAngles = param.turnAngles;
   !turnAngles && (turnAngles = []);
-  log('horizontal:' + useHorizontalFlip + ',angles=' + turnAngles.length);
   if (!param.rects) {
     numbers = param.detectOption;
     stepScale = 4;
@@ -945,8 +944,8 @@ var $stats = function(){};
 var $sessionId = function(){};
 var navigator = {};
 navigator.userAgent = 'timobile';
-$strongName = 'C2FD1CAEEF5F8D4DFF219D2C85A3DCAA';
-$ti4jCompilationDate = 1411808770787;
+$strongName = '68F0CD54C00E6B81F2FEEE5987CCC0E1';
+$ti4jCompilationDate = 1411823403618;
 $wnd.Array = function(){};
 self.addEventListener('message', function(e) {   $workergwtbridge(e.data); }, false);
 gwtOnLoad(null,'detect',null);

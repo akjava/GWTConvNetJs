@@ -97,7 +97,7 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
     		turnAngles=JavaScriptObject.createArray().cast();
     	}
     	
-    	LogUtils.log("horizontal:"+useHorizontalFlip+",angles="+turnAngles.length());
+    	//LogUtils.log("horizontal:"+useHorizontalFlip+",angles="+turnAngles.length());
     	
     	if(param.getRects()==null){
     		//TODO get rect params
