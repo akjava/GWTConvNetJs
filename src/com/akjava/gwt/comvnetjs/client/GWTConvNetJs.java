@@ -1945,7 +1945,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 	private Set<String> temporalyIgnoreList=Sets.newHashSet();
 	
 	
-	private static int lbpDataSplit=2;//somewhere bug?
+	public static final int lbpDataSplit=3;//somewhere bug? TODO separate  horizontal & vertical
 	
 	Net createNewNet(){
 		
@@ -3235,7 +3235,7 @@ charged searchpassedImage
         		bench2.stop();
     			
         		bench3.start();
-    			Vol vol=GWTConvNetJs.createVolFromIndexes(GWTConvNetJs.createLBPDepthFromUint8ArrayPacked(resized, false));
+    			Vol vol=GWTConvNetJs.createVolFromIndexes(GWTConvNetJs.createLBPDepthFromUint8ArrayPacked(resized, false),GWTConvNetJs.parseMaxLBPValue());
     			bench3.stop();
     			
     			//successPosPanel.add(new Image(toDataUrl(cropped,sharedRect.getWidth(),sharedRect.getHeight())));
@@ -4083,11 +4083,11 @@ public int negativeTestSize=100;
 		LogUtils.log("finish test:"+ stopWatch.elapsed(TimeUnit.SECONDS)+"s");
 	}
 	
-	static private int netWidth=32;
-	static private int netHeight=32;
+	public static final int netWidth=24;
+	public static final  int netHeight=24;
 	
 	//expand net because of edge.
-	static  private int edgeSize=4;//must be can divided 2
+	public static  final int edgeSize=4;//must be can divided 2,neibors x 2
 	private Canvas resizedCanvas=CanvasUtils.createCanvas(netWidth+edgeSize, netHeight+edgeSize);//fixed size //can i change?
 	
 	private HorizontalPanel successPosPanel;
@@ -4236,11 +4236,11 @@ public int negativeTestSize=100;
 		if(color){
 			//TODO
 		}else{
-			ints=new int[36][36];
-			for(int x=0;x<ints.length;x++){
-				for(int y=0;y<ints[0].length;y++){
-					int index=(y*ints.length+x)*4;
-					ints[x][y]=array.get(index);//red
+			ints=new int[netHeight+edgeSize][netWidth+edgeSize];
+			for(int x=0;x<ints[0].length;x++){
+				for(int y=0;y<ints.length;y++){
+					int index=(y*ints[0].length+x)*4;
+					ints[y][x]=array.get(index);//red
 				}
 			}
 		}
@@ -4256,18 +4256,18 @@ public int negativeTestSize=100;
 		if(color){
 			//TODO
 		}else{
-			ints=new int[36][36];
-			for(int x=0;x<ints.length;x++){
-				for(int y=0;y<ints[0].length;y++){
-					int index=(y*ints.length+x);
-					ints[x][y]=array.get(index);//red
+			ints=new int[netHeight+edgeSize][netWidth+edgeSize];
+			for(int x=0;x<ints[0].length;x++){
+				for(int y=0;y<ints.length;y++){
+					int index=(y*ints[0].length+x);
+					ints[y][x]=array.get(index);//red
 				}
 			}
 		}
 		
 		//int[][] ints=byteDataIntConverter.convert(imageData); //convert color image to grayscale data
 		//int[][] data=lbpConverter.convert(ints);
-		int[] retInt=lbpConverter.dataToBinaryPattern(ints, edgeSize, edgeSize);
+		int[] retInt=lbpConverter.dataToBinaryPattern(ints,lbpDataSplit,lbpDataSplit, edgeSize, edgeSize);
 		return retInt;
 	}
 	
@@ -4281,7 +4281,7 @@ public int negativeTestSize=100;
 		
 		//int[][] ints=byteDataIntConverter.convert(imageData); //convert color image to grayscale data
 		//int[][] data=lbpConverter.convert(ints);
-		int[] retInt=lbpConverter.dataToBinaryPattern(ints, edgeSize, edgeSize);
+		int[] retInt=lbpConverter.dataToBinaryPattern(ints,lbpDataSplit,lbpDataSplit, edgeSize, edgeSize);
 		return retInt;
 	}
 	
@@ -4295,12 +4295,16 @@ public int negativeTestSize=100;
 		for(int i=0;i<indexes.length;i++){
 			double v=(double)indexes[i]/128-1; //max valu is 16x16(256) to range(-1 - 1)
 			if(v>1 || v<-1){
-				LogUtils.log("invalid");
+				LogUtils.log("invalid createVolFromIndexes:"+v);
 			}
 			vol.set(0, 0,i,v);
 		}
 		
 		return vol;
+	}
+	
+	public static final int parseMaxLBPValue(){
+		return ((netWidth)/lbpDataSplit)*((netHeight)/lbpDataSplit);
 	}
 	
 	/**
@@ -4316,7 +4320,7 @@ public int negativeTestSize=100;
 		for(int i=0;i<indexes.length;i++){
 			double v=(double)indexes[i]/half-1; //max valu is 16x16(256) to range(-1 - 1)
 			if(v>1 || v<-1){
-				LogUtils.log("invalid");
+				LogUtils.log("invalid:"+v+",maxValue="+maxValue);
 			}
 			vol.set(0, 0,i,v);
 		}
@@ -4325,7 +4329,7 @@ public int negativeTestSize=100;
 	}
 	
 	private static Vol createLBPDepthVolFromImageData(ImageData imageData,boolean color){
-		if(imageData.getWidth()!=netWidth+edgeSize || imageData.getHeight()!=netHeight+edgeSize){ //somehow still 26x26 don't care!
+		if(imageData.getWidth()!=netWidth+edgeSize || imageData.getHeight()!=netHeight+edgeSize){ 
 			Window.alert("invalid size:"+imageData.getWidth()+","+imageData.getHeight()+" expected "+(netWidth+edgeSize)+"x"+(netHeight+edgeSize));
 			return null;
 		}
@@ -4337,7 +4341,13 @@ public int negativeTestSize=100;
 		
 		
 		int[] retInt=createLBPDepthFromImageData(imageData,color);
-		return createVolFromIndexes(retInt);
+		//debug
+		for(int v:retInt){
+			if(v>parseMaxLBPValue()){
+				LogUtils.log("retInt is over "+parseMaxLBPValue());
+			}
+		}
+		return createVolFromIndexes(retInt,parseMaxLBPValue());// 24x24 pixel split 3x3 is 8x8
 		
 		
 		//Vol vol=createNewVol();

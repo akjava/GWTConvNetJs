@@ -52,7 +52,7 @@ function $exportBridge(){
 }
 
 function detect(param){
-  var i_0, imageData, minH, minW, min_scale, nets, numbers, rect, resized, result, resultRect, scale_factor, stepScale, vol;
+  var binaryPattern, flipped, i_0, imageData, minH, minW, min_scale, nets, numbers, rect, resized, result, resultRect, scale_factor, stepScale, vol;
   resultRect = [];
   nets = jsonToNet(param.json);
   imageData = param.imageData;
@@ -75,11 +75,16 @@ function detect(param){
   for (i_0 = 0; i_0 < param.rects.length; ++i_0) {
     rect = param.rects[i_0];
     resized = resizeBilinearRedOnly(imageData, rect.x, rect.y, rect.width, rect.height);
-    vol = createVolFromIndexes(createLBPDepthFromUint8ArrayPacked(resized));
+    binaryPattern = createLBPDepthFromUint8ArrayPacked(resized);
+    vol = createVolFromIndexes(binaryPattern, ($clinit_GWTConvNetJs() , 64));
     result = passAll(nets, vol);
     if (result != -1) {
       rect.confidence = result;
       $push(resultRect, rect);
+    }
+     else {
+      flipped = createVolFromIndexes(flipHorizontal(binaryPattern), 64);
+      passAll(nets, flipped);
     }
   }
   self.postMessage(resultRect);
@@ -134,24 +139,25 @@ function $clinit_GWTConvNetJs(){
 function createLBPDepthFromUint8ArrayPacked(array){
   $clinit_GWTConvNetJs();
   var index, ints, retInt, x, y;
-  ints = initDims([_3_3I_classLit, _3I_classLit], [CM$, CM$], [Q$Object, -1], [36, 36], 2, 1);
-  for (x = 0; x < ints.length; ++x) {
-    for (y = 0; y < ints[0].length; ++y) {
-      index = y * ints.length + x;
-      ints[x][y] = array[index];
+  ints = initDims([_3_3I_classLit, _3I_classLit], [CM$, CM$], [Q$Object, -1], [28, 28], 2, 1);
+  for (x = 0; x < ints[0].length; ++x) {
+    for (y = 0; y < ints.length; ++y) {
+      index = y * ints[0].length + x;
+      ints[y][x] = array[index];
     }
   }
   retInt = $dataToBinaryPattern(lbpConverter, ints);
   return retInt;
 }
 
-function createVolFromIndexes(indexes){
+function createVolFromIndexes(indexes, maxValue){
   $clinit_GWTConvNetJs();
-  var i_0, v, vol;
-  vol = new $wnd.convnetjs.Vol(1, 1, 32, 0);
+  var half, i_0, v, vol;
+  half = ~~(maxValue / 2);
+  vol = new $wnd.convnetjs.Vol(1, 1, 72, 0);
   for (i_0 = 0; i_0 < indexes.length; ++i_0) {
-    v = indexes[i_0] / 128 - 1;
-    (v > 1 || v < -1) && log('invalid');
+    v = indexes[i_0] / half - 1;
+    (v > 1 || v < -1) && log('invalid:' + v + ',maxValue=' + maxValue);
     vol.set(0, 0, i_0, v);
   }
   return vol;
@@ -201,13 +207,13 @@ function log(object){
 function resizeBilinearRedOnly(imageData, ax, ay, w, h){
   var a, array, b, c, d, i_0, index, iw, j, offset, result, value, x, x_diff, x_ratio, y, y_diff, y_ratio;
   array = imageData.data;
-  result = new Uint8Array(1296);
-  x_ratio = (w - 1) / 36;
-  y_ratio = (h - 1) / 36;
+  result = new Uint8Array(784);
+  x_ratio = (w - 1) / 28;
+  y_ratio = (h - 1) / 28;
   offset = 0;
   iw = imageData.width;
-  for (i_0 = 0; i_0 < 36; ++i_0) {
-    for (j = 0; j < 36; ++j) {
+  for (i_0 = 0; i_0 < 28; ++i_0) {
+    for (j = 0; j < 28; ++j) {
       x = round_int(x_ratio * j);
       y = round_int(y_ratio * i_0);
       x_diff = x_ratio * j - x;
@@ -232,27 +238,24 @@ function $clinit_SimpleLBP(){
 }
 
 function $dataToBinaryPattern(this$static, arrays){
-  var center, centers, h, i_0, offx, offy, otherValue, resultH, resultW, retIndexOffset, retInt, retX, retY, v, w, x, y;
-  resultW = ~~((arrays.length - 4) / 2);
-  resultH = ~~((arrays[0].length - 4) / 2);
-  retInt = initDim(_3I_classLit, CM$, -1, 32, 1);
-  w = arrays.length;
-  h = arrays[0].length;
+  var center, centers, h, i_0, offx, offy, otherValue, resultH, resultW, retIndexOffset, retInt, retX, retY, w, x, y;
+  w = arrays[0].length;
+  h = arrays.length;
+  resultW = ~~((w - 4) / 3);
+  resultH = ~~((h - 4) / 3);
+  retInt = initDim(_3I_classLit, CM$, -1, 72, 1);
   for (x = 2; x < w - 2; ++x) {
     for (y = 2; y < h - 2; ++y) {
       centers = $getAroundValues(this$static, x, y, arrays);
       center = $getCenterValue(this$static, centers);
       retX = ~~((x - 2) / resultW);
       retY = ~~((y - 2) / resultH);
-      retIndexOffset = 8 * (retY * 2 + retX);
+      retIndexOffset = 8 * (retY * 3 + retX);
       for (i_0 = 0; i_0 < atx.length; ++i_0) {
         offx = 1 + atx[i_0];
         offy = 1 + aty[i_0];
-        this$static.neighbor == 1?(otherValue = centers[offx][offy]):(otherValue = $getOtherValue(arrays, x + atx[i_0] * this$static.neighbor, y + aty[i_0] * this$static.neighbor));
-        if (otherValue > center) {
-          v = 7 - i_0;
-          ++retInt[v + retIndexOffset];
-        }
+        this$static.neighbor == 1?(otherValue = centers[offy][offx]):(otherValue = $getOtherValue(arrays, x + atx[i_0] * this$static.neighbor, y + aty[i_0] * this$static.neighbor));
+        otherValue > center && ++retInt[i_0 + retIndexOffset];
       }
     }
   }
@@ -262,28 +265,28 @@ function $dataToBinaryPattern(this$static, arrays){
 function $getAroundValues(this$static, tx, ty, arrays){
   var i_0, offx, offy;
   for (i_0 = 0; i_0 < atx.length; ++i_0) {
-    this$static.container[1][1] = arrays[tx][ty];
+    this$static.container[1][1] = arrays[ty][tx];
     offx = tx + atx[i_0];
     offy = ty + aty[i_0];
-    offx >= 0 && offy >= 0 && offx < arrays.length && offy < arrays[0].length?(this$static.container[1 + atx[i_0]][1 + aty[i_0]] = arrays[offx][offy]):(this$static.container[1 + atx[i_0]][1 + aty[i_0]] = -1);
+    offx >= 0 && offy >= 0 && offx < arrays[0].length && offy < arrays.length?(this$static.container[1 + aty[i_0]][1 + atx[i_0]] = arrays[offy][offx]):(this$static.container[1 + aty[i_0]][1 + atx[i_0]] = -1);
   }
   return this$static.container;
 }
 
 function $getCenterValue(this$static, around){
-  var items, total, x, y;
-  if (this$static.improved) {
+  var exists, total, x, y;
+  if (this$static.useImprovedLBP) {
     total = 0;
-    items = 0;
+    exists = 0;
     for (x = 0; x < 3; ++x) {
       for (y = 0; y < 3; ++y) {
-        if (around[x][y] >= 0) {
-          total += around[x][y];
-          ++items;
+        if (around[y][x] >= 0) {
+          total += around[y][x];
+          ++exists;
         }
       }
     }
-    return ~~(total / items);
+    return ~~(total / exists);
   }
    else {
     return around[1][1];
@@ -294,20 +297,63 @@ function $getOtherValue(arrays, offx, offy){
   if (offx < 0 || offx >= arrays.length || offy < 0 || offy >= arrays[0].length) {
     return -1;
   }
-  return arrays[offx][offy];
+  return arrays[offy][offx];
 }
 
 function SimpleLBP_0(){
   $clinit_SimpleLBP();
-  this.improved = true;
+  this.useImprovedLBP = true;
   this.neighbor = 2;
   this.container = initDims([_3_3I_classLit, _3I_classLit], [CM$, CM$], [Q$Object, -1], [3, 3], 2, 1);
 }
 
+function flipHorizontal(binaryPattern){
+  $clinit_SimpleLBP();
+  var converted, destOffset, i_0, nindex, srcOffset, x, y;
+  checkState(binaryPattern.length == 72);
+  converted = initDim(_3I_classLit, CM$, -1, binaryPattern.length, 1);
+  for (y = 0; y < 3; ++y) {
+    for (x = 0; x < 3; ++x) {
+      srcOffset = (y * 3 + x) * 8;
+      destOffset = (y * 3 + (2 - x)) * 8;
+      for (i_0 = 0; i_0 < 8; ++i_0) {
+        nindex = 0;
+        switch (i_0) {
+          case 0:
+            nindex = 2;
+            break;
+          case 1:
+            nindex = 1;
+            break;
+          case 2:
+            nindex = 0;
+            break;
+          case 3:
+            nindex = 7;
+            break;
+          case 4:
+            nindex = 6;
+            break;
+          case 5:
+            nindex = 5;
+            break;
+          case 6:
+            nindex = 4;
+            break;
+          case 7:
+            nindex = 3;
+        }
+        converted[destOffset + nindex] = binaryPattern[srcOffset + i_0];
+      }
+    }
+  }
+  return converted;
+}
+
 defineSeed(20, 1, {}, SimpleLBP_0);
 _.container = null;
-_.improved = true;
 _.neighbor = 0;
+_.useImprovedLBP = true;
 var atx, aty;
 function Rect_0(width, height){
   this.x_0 = 0;
@@ -326,6 +372,12 @@ function checkNotNull(reference){
     throw new NullPointerException_1;
   }
   return reference;
+}
+
+function checkState(expression){
+  if (!expression) {
+    throw new IllegalStateException_0;
+  }
 }
 
 function Stopwatch_0(){
@@ -746,6 +798,11 @@ function ClassCastException_0(){
 }
 
 defineSeed(55, 30, makeCastMap([Q$Throwable]), ClassCastException_0);
+function IllegalStateException_0(){
+  $fillInStackTrace();
+}
+
+defineSeed(56, 30, makeCastMap([Q$Throwable]), IllegalStateException_0);
 function NullPointerException_0(){
   $fillInStackTrace();
 }
@@ -754,11 +811,11 @@ function NullPointerException_1(){
   $fillInStackTrace();
 }
 
-defineSeed(56, 30, makeCastMap([Q$Throwable]), NullPointerException_0, NullPointerException_1);
+defineSeed(57, 30, makeCastMap([Q$Throwable]), NullPointerException_0, NullPointerException_1);
 function StackTraceElement_0(methodName){
 }
 
-defineSeed(57, 1, {}, StackTraceElement_0);
+defineSeed(58, 1, {}, StackTraceElement_0);
 function $indexOf(this$static, str){
   return this$static.indexOf(str);
 }
@@ -790,14 +847,14 @@ function gwtOnLoad(errFn, modName, modBase, softPermutationId){
   }
 }
 
-var Ljava_lang_Object_2_classLit = createForClass('java.lang.', 'Object', 1), Lcom_google_gwt_core_client_JavaScriptObject_2_classLit = createForClass('com.google.gwt.core.client.', 'JavaScriptObject$', 8), _3I_classLit = createForArray('', '[I', 58), Ljava_lang_Throwable_2_classLit = createForClass('java.lang.', 'Throwable', 32), Ljava_lang_Exception_2_classLit = createForClass('java.lang.', 'Exception', 31), Ljava_lang_RuntimeException_2_classLit = createForClass('java.lang.', 'RuntimeException', 30), Ljava_lang_StackTraceElement_2_classLit = createForClass('java.lang.', 'StackTraceElement', 57), _3Ljava_lang_StackTraceElement_2_classLit = createForArray('[Ljava.lang.', 'StackTraceElement;', 59), Lcom_google_gwt_lang_SeedUtil_2_classLit = createForClass('com.google.gwt.lang.', 'SeedUtil', 49), Ljava_lang_Class_2_classLit = createForClass('java.lang.', 'Class', 54), Ljava_lang_String_2_classLit = createForClass('java.lang.', 'String', 2), Ljava_lang_ClassCastException_2_classLit = createForClass('java.lang.', 'ClassCastException', 55), Lcom_google_gwt_core_client_JavaScriptException_2_classLit = createForClass('com.google.gwt.core.client.', 'JavaScriptException', 29), Lcom_google_gwt_core_client_Scheduler_2_classLit = createForClass('com.google.gwt.core.client.', 'Scheduler', 36), Lcom_google_gwt_core_client_impl_SchedulerImpl_2_classLit = createForClass('com.google.gwt.core.client.impl.', 'SchedulerImpl', 38), _3_3I_classLit = createForArray('', '[[I', 60), Lcom_akjava_lib_common_graphics_Rect_2_classLit = createForClass('com.akjava.lib.common.graphics.', 'Rect', 21), Ljava_lang_NullPointerException_2_classLit = createForClass('java.lang.', 'NullPointerException', 56), Lcom_akjava_gwt_lib_client_experimental_lbp_SimpleLBP_2_classLit = createForClass('com.akjava.gwt.lib.client.experimental.lbp.', 'SimpleLBP', 20), Lcom_google_common_base_Stopwatch_2_classLit = createForClass('com.google.common.base.', 'Stopwatch', 23), Lcom_google_common_base_Ticker_2_classLit = createForClass('com.google.common.base.', 'Ticker', 24), Lcom_google_common_base_Ticker$1_2_classLit = createForClass('com.google.common.base.', 'Ticker$1', 25);
+var Ljava_lang_Object_2_classLit = createForClass('java.lang.', 'Object', 1), Lcom_google_gwt_core_client_JavaScriptObject_2_classLit = createForClass('com.google.gwt.core.client.', 'JavaScriptObject$', 8), _3I_classLit = createForArray('', '[I', 59), Ljava_lang_Throwable_2_classLit = createForClass('java.lang.', 'Throwable', 32), Ljava_lang_Exception_2_classLit = createForClass('java.lang.', 'Exception', 31), Ljava_lang_RuntimeException_2_classLit = createForClass('java.lang.', 'RuntimeException', 30), Ljava_lang_StackTraceElement_2_classLit = createForClass('java.lang.', 'StackTraceElement', 58), _3Ljava_lang_StackTraceElement_2_classLit = createForArray('[Ljava.lang.', 'StackTraceElement;', 60), Lcom_google_gwt_lang_SeedUtil_2_classLit = createForClass('com.google.gwt.lang.', 'SeedUtil', 49), Ljava_lang_Class_2_classLit = createForClass('java.lang.', 'Class', 54), Ljava_lang_String_2_classLit = createForClass('java.lang.', 'String', 2), Ljava_lang_ClassCastException_2_classLit = createForClass('java.lang.', 'ClassCastException', 55), Lcom_google_gwt_core_client_JavaScriptException_2_classLit = createForClass('com.google.gwt.core.client.', 'JavaScriptException', 29), Lcom_google_gwt_core_client_Scheduler_2_classLit = createForClass('com.google.gwt.core.client.', 'Scheduler', 36), Lcom_google_gwt_core_client_impl_SchedulerImpl_2_classLit = createForClass('com.google.gwt.core.client.impl.', 'SchedulerImpl', 38), _3_3I_classLit = createForArray('', '[[I', 61), Lcom_akjava_lib_common_graphics_Rect_2_classLit = createForClass('com.akjava.lib.common.graphics.', 'Rect', 21), Lcom_akjava_gwt_lib_client_experimental_lbp_SimpleLBP_2_classLit = createForClass('com.akjava.gwt.lib.client.experimental.lbp.', 'SimpleLBP', 20), Ljava_lang_NullPointerException_2_classLit = createForClass('java.lang.', 'NullPointerException', 57), Lcom_google_common_base_Stopwatch_2_classLit = createForClass('com.google.common.base.', 'Stopwatch', 23), Ljava_lang_IllegalStateException_2_classLit = createForClass('java.lang.', 'IllegalStateException', 56), Lcom_google_common_base_Ticker_2_classLit = createForClass('com.google.common.base.', 'Ticker', 24), Lcom_google_common_base_Ticker$1_2_classLit = createForClass('com.google.common.base.', 'Ticker$1', 25);
 
 var $stats = function(){};
 var $sessionId = function(){};
 var navigator = {};
 navigator.userAgent = 'timobile';
-$strongName = 'F3C242D701527AB6FBEB6FCB4FAA8C66';
-$ti4jCompilationDate = 1411559379116;
+$strongName = '9FE891CCFCC8E94CD9F5A56B3F271503';
+$ti4jCompilationDate = 1411797809203;
 $wnd.Array = function(){};
 self.addEventListener('message', function(e) {   $workergwtbridge(e.data); }, false);
 gwtOnLoad(null,'detect',null);

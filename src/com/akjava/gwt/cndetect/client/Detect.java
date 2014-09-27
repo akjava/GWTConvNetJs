@@ -144,23 +144,27 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
 			//Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnlyPacked(cropped, rect.getWidth(), rect.getHeight(), 36,36);
 			
 			//little bit improved when
-			Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnly(imageData,rect.getX(),rect.getY(), rect.getWidth(), rect.getHeight(), 36,36);
+			Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnly(imageData,rect.getX(),rect.getY(), rect.getWidth(), rect.getHeight(), GWTConvNetJs.netWidth+GWTConvNetJs.edgeSize,GWTConvNetJs.netHeight+GWTConvNetJs.edgeSize);
 			
 			
 			int[] binaryPattern=GWTConvNetJs.createLBPDepthFromUint8ArrayPacked(resized, false);
-			Vol vol=GWTConvNetJs.createVolFromIndexes(binaryPattern);
+			
+			Vol vol=GWTConvNetJs.createVolFromIndexes(binaryPattern,GWTConvNetJs.parseMaxLBPValue());
 			
 			double result=passAll(nets,vol);
 			if(result!=-1){
 				rect.setConfidence(result);
     			resultRect.push(rect);
-			}else{//flip horizontal check
-				Vol flipped=GWTConvNetJs.createVolFromIndexes(SimpleLBP.flipHorizontal(binaryPattern,2,2));
+			}else{
+				
+				//flip horizontal check
+				Vol flipped=GWTConvNetJs.createVolFromIndexes(SimpleLBP.flipHorizontal(binaryPattern,GWTConvNetJs.lbpDataSplit,GWTConvNetJs.lbpDataSplit),GWTConvNetJs.parseMaxLBPValue());
 				double result2=passAll(nets,flipped);
 				if(result!=-1){
 					rect.setConfidence(result2);
 	    			resultRect.push(rect);
 				}
+				
 			}
 			
 			
