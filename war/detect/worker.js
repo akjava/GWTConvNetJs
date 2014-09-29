@@ -100,15 +100,21 @@ function detect(param){
     if (result == -1 && useHorizontalFlip) {
       flippedPattern = flipHorizontal(binaryPattern);
       flipped = createVolFromIndexes(flippedPattern, 64);
-      passAll(nets, flipped);
-      for (j = 0; j < turnAngles.length; ++j) {
-        turned = turn3x3(flippedPattern, round_int(turnAngles[j]));
-        turnedVol = createVolFromIndexes(turned, 64);
-        result = passAll(nets, turnedVol);
-        if (result != -1) {
-          rect.confidence = result;
-          $push(resultRect, rect);
-          break;
+      result = passAll(nets, flipped);
+      if (result != -1) {
+        rect.confidence = result;
+        $push(resultRect, rect);
+      }
+       else {
+        for (j = 0; j < turnAngles.length; ++j) {
+          turned = turn3x3(flippedPattern, round_int(turnAngles[j]));
+          turnedVol = createVolFromIndexes(turned, 64);
+          result = passAll(nets, turnedVol);
+          if (result != -1) {
+            rect.confidence = result;
+            $push(resultRect, rect);
+            break;
+          }
         }
       }
     }
@@ -944,8 +950,8 @@ var $stats = function(){};
 var $sessionId = function(){};
 var navigator = {};
 navigator.userAgent = 'timobile';
-$strongName = '68F0CD54C00E6B81F2FEEE5987CCC0E1';
-$ti4jCompilationDate = 1411823403618;
+$strongName = 'A2F1D50D093EF0968E1FB3BAD7F680BA';
+$ti4jCompilationDate = 1411970541783;
 $wnd.Array = function(){};
 self.addEventListener('message', function(e) {   $workergwtbridge(e.data); }, false);
 gwtOnLoad(null,'detect',null);

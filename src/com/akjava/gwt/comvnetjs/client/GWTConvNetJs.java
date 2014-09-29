@@ -377,6 +377,12 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 			@Override
 			public void uploaded(File file, String text) {
 				fromJson(text);
+				if(FileNames.getRemovedExtensionName(file.getFileName()).endsWith("_release")){
+					boolean result=Window.confirm("this json is released version,to continue creating to add new cascade?");
+					if(result){
+						addNewCascade();
+					}
+				}
 			}
 		}, true);
 		mainPanel.add(cascadeUploadBt);
@@ -442,7 +448,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 				}
 				String json=toJson(nets);
 				
-				Anchor downloadJson=HTML5Download.get().generateTextDownloadLink(json, "cascades.json", "download cascades",true);
+				Anchor downloadJson=HTML5Download.get().generateTextDownloadLink(json, "cascades_release.json", "download cascades",true);
 				mainPanel.add(downloadJson);
 			}
 		});
@@ -876,6 +882,11 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 					public int getNegativeCount() {
 						return negativeTestSize;
 					}
+
+					@Override
+					public void sendInfo(String message) {
+						messageLabel.setText(message);
+					}
 					
 				};
 				
@@ -898,6 +909,9 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 			}
 		});
 		buttons.add(test1Cancel);
+		
+		messageLabel = new Label();
+		panel.add(messageLabel);
 		
 		
 		HorizontalPanel h=new HorizontalPanel();
@@ -1283,6 +1297,18 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 	private HorizontalPanel cerateTestButtons() {
 		HorizontalPanel panel=new HorizontalPanel();
 
+		Button test1Bt=new Button("Test1",new ClickHandler() {
+			
+			@Override
+			public void onClick(ClickEvent event) {
+				Stopwatch test1Watch=Stopwatch.createStarted();//share 1 worker pool
+				for(int i=0;i<1000;i++){
+					createRandomVol();
+				}
+				LogUtils.log("time:"+test1Watch.elapsed(TimeUnit.SECONDS)+"s");
+			}
+		});
+		panel.add(test1Bt);
 		
 		
 		ExecuteButton execute=new ExecuteButton("Test1",false) {
@@ -1413,7 +1439,8 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 				*/
 			}
 		};
-		panel.add(execute);
+		
+		//panel.add(execute);
 		
 		Button test1Cancel=new Button("Test1 Cancel",new ClickHandler() {
 			
@@ -1579,6 +1606,9 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 	public String getNegativeInfo(){
 		Stopwatch watch=Stopwatch.createUnstarted();
 		int totalRect=0;
+		if(negativesZip==null){
+			return "";//possible call before negative zip loaded;
+		}
 		for(CVImageData data:negativesZip.getDatas()){
 			for(ImageElement image:negativesZip.getImageElement(data).asSet()){
 				watch.start();
@@ -4129,7 +4159,8 @@ public int negativeTestSize=100;
 	private Map<String,List<Rect>> rectsMap=new HashMap<String, List<Rect>>();
 	
 	private boolean useRandomOnCreateVol=true;//on first stage it's better use random
-	private ImageElement lastImageElement;
+	//private ImageElement lastImageElement;
+	private ImageData lastImageData;
 	private CVImageData lastData;
 	public Optional<Vol> createRandomVol(){
 		Stopwatch watch=Stopwatch.createStarted();
@@ -4145,6 +4176,7 @@ public int negativeTestSize=100;
 		//byte[] bt=imgFile.asUint8Array().toByteArray();
 		//this action kill 
 		
+		ImageData imageData=null;
 		ImageElement negativeImage=null;
 		
 		if(pdata!=lastData){
@@ -4153,60 +4185,35 @@ public int negativeTestSize=100;
 			LogUtils.log("skip.image not found in zip(or filter faild):"+pdata.getFileName()+" of "+negativesZip.getName());
 			continue;
 		}
-		negativeImage=optional.get();
+		ImageElement image=negativeImage=optional.get();
+		ImageElementUtils.copytoCanvas(image, sharedCanvas);
+		imageData=sharedCanvas.getContext2d().getImageData(0, 0, sharedCanvas.getCoordinateSpaceWidth(), sharedCanvas.getCoordinateSpaceHeight());
 		}else{
-			negativeImage=lastImageElement;
+			imageData=lastImageData;
 		}
 		
 		lastData=pdata;
-		lastImageElement=negativeImage;
+		lastImageData=imageData;
 		
 		
-		
-		
-		//LogUtils.log("load-image:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
-		watch.reset();watch.start();
 		
 		List<Rect> rects=loadRect(negativeImage,pdata.getFileName());
-		//LogUtils.log("generate-rect:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
-		watch.reset();watch.start();
-		/*
-		int width=testImage.getWidth();
-		int height=testImage.getHeight();
-		
-		int w=24;
-		int h=24;
-		*/
-		//should i keep ratio?
-		
-		/*
-			int randomWidth=getRandom(w,Math.min(24*20,width-w));
-			int randomHeight=getRandom(h,Math.min(24*20,height-h));
-			
-			int x=getRandom(0,width-randomWidth);
-			int y=getRandom(0,height-randomHeight);
-		*/
-			
-			
-			//Rect r=new Rect(x,y,randomWidth,randomHeight);//more varaerty of rect
-			Rect r=rects.remove(0);
-			
-			//rects.add(r);///stop looping
-			if(rects.size()==0){
+		Rect rect=rects.remove(0);
+		if(rects.size()==0){
 				negativesZip.getDatas().remove(pdata);//remove permanently,if neee use,do refrash page
 				LogUtils.log("rect is empty removed:"+pdata.getFileName()+","+getNegativeInfo());
-			}
-			//LogUtils.log(r);
-			
-			//LogUtils.log("train:"+data.getFileName()+","+r.toString());
-			RectCanvasUtils.crop(negativeImage, r, sharedCanvas);
-			CanvasUtils.clear(resizedCanvas);
-			resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
-			Vol vol=createVolFromImageData(resizedCanvas.getContext2d().getImageData(0, 0, resizedCanvas.getCoordinateSpaceWidth(), resizedCanvas.getCoordinateSpaceHeight()));
-			lastDataUrl=resizedCanvas.toDataUrl();
-			//LogUtils.log("generate-image:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
-			watch.reset();watch.start();
-			//LogUtils.log("randomVol:"+pdata.getFileName()+":"+r.toKanmaString());
+		
+		}
+		
+		Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnly(imageData,rect.getX(),rect.getY(), rect.getWidth(), rect.getHeight(), GWTConvNetJs.netWidth+GWTConvNetJs.edgeSize,GWTConvNetJs.netHeight+GWTConvNetJs.edgeSize);
+		
+		
+		int[] binaryPattern=GWTConvNetJs.createLBPDepthFromUint8ArrayPacked(resized, false);
+		
+		Vol vol=GWTConvNetJs.createVolFromIndexes(binaryPattern,GWTConvNetJs.parseMaxLBPValue());
+		
+		
+		
 			return Optional.of(vol);
 		
 		}
@@ -4242,6 +4249,8 @@ public int negativeTestSize=100;
 	private ExecuteButton detectWorkerBt;
 
 	private CheckBox useHorizontalFlipCheck;
+
+	private Label messageLabel;
 	public static Vol createVolFromImageData(ImageData imageData){
 		//return createGrayscaleImageVolFromImageData(imageData);
 		return createLBPDepthVolFromImageData(imageData,true);

@@ -164,8 +164,9 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
 			if(result!=-1){
 				rect.setConfidence(result);
     			resultRect.push(rect);
+    			
 			}
-			
+			//angles
 			if(result==-1){
 				for(int j=0;j<turnAngles.length();j++){
 					int[] turned=SimpleLBP.turn3x3(binaryPattern, (int)turnAngles.get(j));
@@ -182,10 +183,11 @@ public class Detect extends JsDedicatedWorkerGlobalScope implements EntryPoint {
 			if(result==-1 && useHorizontalFlip){
 				int[] flippedPattern=SimpleLBP.flipHorizontal(binaryPattern,GWTConvNetJs.lbpDataSplit,GWTConvNetJs.lbpDataSplit);
 				Vol flipped=GWTConvNetJs.createVolFromIndexes(flippedPattern,GWTConvNetJs.parseMaxLBPValue());
-				double result2=passAll(nets,flipped);
+				result=passAll(nets,flipped);
 				if(result!=-1){
-					rect.setConfidence(result2);
+					rect.setConfidence(result);
 	    			resultRect.push(rect);
+	    			//LogUtils.log("flipped-match");
 				}else{
 					//angles
 					for(int j=0;j<turnAngles.length();j++){

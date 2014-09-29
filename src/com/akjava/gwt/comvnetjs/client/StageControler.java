@@ -41,6 +41,7 @@ public abstract class StageControler {
 	private int variationSize=0;
 	private int needPassedImageSize;
 	private boolean initialImageSearch;
+	private long searched;
 	public boolean isCanceled() {
 		return canceled;
 	}
@@ -61,6 +62,7 @@ public abstract class StageControler {
 		}
 		
 		searchWatch.reset();searchWatch.start();
+		searched=0;
 	}
 	Stopwatch searchWatch=Stopwatch.createUnstarted();
 	public void start(final LearningInfo learningInfo){
@@ -174,6 +176,13 @@ public abstract class StageControler {
 						}
 						
 						}
+					searched++;
+					if(searched%10000==0){
+						sendInfo("continue-searching passed images:"+imageSize+",time="+searchWatch.elapsed(TimeUnit.SECONDS)+"s"+" searched:"+searched);
+						//if(!searchWatch.isRunning()){
+							//searchWatch.start();
+						//}
+					}
 					
 				}
 				
@@ -283,7 +292,7 @@ public abstract class StageControler {
 			}
 		};
 		
-		timer.scheduleRepeating(10);
+		timer.scheduleRepeating(1);//for speed up
 		
 		
 		
@@ -372,6 +381,7 @@ public abstract class StageControler {
 	
 	public abstract int getPositiveCount();
 	public abstract int getNegativeCount();
+	public abstract void sendInfo(String message);
 	
 	public static class StageResult{
 	private int stage;
