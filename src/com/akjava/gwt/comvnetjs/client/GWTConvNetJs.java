@@ -52,6 +52,7 @@ import com.akjava.gwt.lib.client.widget.cell.EasyCellTableObjects;
 import com.akjava.gwt.lib.client.widget.cell.SimpleCellTable;
 import com.akjava.gwt.webworker.client.Worker2;
 import com.akjava.gwt.webworker.client.WorkerPool;
+import com.akjava.gwt.webworker.client.WorkerPool.HashedParameterData;
 import com.akjava.gwt.webworker.client.WorkerPool.Uint8WorkerPoolData;
 import com.akjava.gwt.webworker.client.WorkerPool.WorkerPoolData;
 import com.akjava.gwt.webworker.client.WorkerPoolMultiCaller;
@@ -116,10 +117,8 @@ import com.google.gwt.user.client.ui.ListBox;
 import com.google.gwt.user.client.ui.Panel;
 import com.google.gwt.user.client.ui.RootLayoutPanel;
 import com.google.gwt.user.client.ui.ScrollPanel;
-import com.google.gwt.user.client.ui.ValueListBox;
 import com.google.gwt.user.client.ui.VerticalPanel;
 import com.google.gwt.webworker.client.MessageEvent;
-import com.google.gwt.webworker.client.Worker;
 
 /**
  * Entry point classes define <code>onModuleLoad()</code>.
@@ -172,6 +171,8 @@ public class GWTConvNetJs implements EntryPoint {
 	private CheckBox use45AngleCheck;
 
 	private CheckBox use90AngleCheck;
+
+	private CheckBox createHorizontalVolCheck;
 	public class LBPImageZip extends CVImageZip{
 		private ByteImageDataIntConverter converter=new ByteImageDataIntConverter(lbpCanvas.getContext2d(),true);
 	
@@ -454,18 +455,50 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		});
 		saveButtons.add(saveReleaseBt);
 		
-		createRandomVolCheck = new CheckBox("use random vol");
+		HorizontalPanel volOptions=new HorizontalPanel();
+		volOptions.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
+		volOptions.add(new Label("Negative Vol options"));
+		mainPanel.add(volOptions);
+		
+		createRandomVolCheck = new CheckBox("use random image");
 		createRandomVolCheck.setValue(true);
 		createRandomVolCheck.addValueChangeHandler(new ValueChangeHandler<Boolean>() {
 
 			@Override
 			public void onValueChange(ValueChangeEvent<Boolean> event) {
-				LogUtils.log("createRandomVolCheck changed:"+event.getValue());
+				
 				useRandomOnCreateVol=event.getValue();
 			}
 			
 		});
-		mainPanel.add(createRandomVolCheck);
+		volOptions.add(createRandomVolCheck);
+		
+		createHorizontalVolCheck = new CheckBox("use horizontal");
+	
+		createHorizontalVolCheck.addValueChangeHandler(new ValueChangeHandler<Boolean>() {
+
+			@Override
+			public void onValueChange(ValueChangeEvent<Boolean> event) {
+				
+				useHorizontalFlip=event.getValue();
+			}
+			
+		});
+		volOptions.add(createHorizontalVolCheck);
+		List<Integer> searchWorkersValues=Lists.newArrayList(0,2,4,8,16);
+		searchVolWorkerSizeBox = new ToStringValueListBox<Integer>(searchWorkersValues);
+		searchVolWorkerSizeBox.addValueChangeHandler(new ValueChangeHandler<Integer>() {
+
+			@Override
+			public void onValueChange(ValueChangeEvent<Integer> event) {
+				searchPassedImageWorkerSize=event.getValue();
+			}
+			
+		});
+		searchVolWorkerSizeBox.setValue(2,true);
+		
+		volOptions.add(searchVolWorkerSizeBox);
+		
 		
 		mainPanel.add(createRepeatControls());
 		
@@ -869,8 +902,8 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 					}
 
 					@Override
-					public int searchPassedImages(boolean isInitial) {
-						return GWTConvNetJs.this.searchPassedImage(isInitial);
+					public int searchPassedImages(boolean isInitial,int needPassedImageSize) {
+						return GWTConvNetJs.this.searchPassedImage(isInitial,needPassedImageSize);
 					}
 
 					@Override
@@ -904,8 +937,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 			
 			@Override
 			public void onClick(ClickEvent event) {
-				stageControler.setCanceled(true);
-				stageResultObjects.update();//for manual update
+				doCancelAuto();
 			}
 		});
 		buttons.add(test1Cancel);
@@ -1007,6 +1039,17 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		
 		
 		return panel;
+	}
+
+	protected void doCancelAuto() {
+		stageControler.setCanceled(true);
+		stageResultObjects.update();//for manual update
+		
+		
+		//cancel searching worker,TODO method?
+		searchPassedImageWorker.setCancelled(true);
+		searchPassedImageWorkerRunning=false;
+		searchPassedImageWorker=null;
 	}
 
 	private VerticalPanel createRepeatControls() {
@@ -1294,18 +1337,104 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 	}
 	
 	WorkerPool testWorkerPool;
+	
+	public static  Vol convertToHorizontalVol(Vol vol){
+		double[] values=new double[vol.getLength()];
+		for(int i=0;i<values.length;i++){
+			values[i]=vol.getW(i);
+		}
+		
+		Vol convertedVol=createNewVol();
+		double[] converted=SimpleLBP.flipHorizontal(values, lbpDataSplit, lbpDataSplit);
+		for(int i=0;i<values.length;i++){
+			convertedVol.setW(i, converted[i]);
+		}
+		return convertedVol;
+	}
+	
+	private void doTest1(){
+	//	dtime=0;dtime1=0;dtime2=0;dtime3=0;
+		/*
+		Optional<Vol> optional=createPassedRandomVol(getLastCascade());
+		if(optional.isPresent()){
+			Vol vol=optional.get();
+			LogUtils.log("normal:"+Joiner.on(",").join(vol.getWAsList()));
+			LogUtils.log("horizontal:"+Joiner.on(",").join(convertToHorizontalVol(vol).getWAsList()));
+		}*/
+		
+		long time2=0;
+		JsArray<Net> nets=toNetList();
+		
+		int passed=0;
+		int horizontal=0;
+		CascadeNet cascadeNet=getLastCascade();
+		Stopwatch test1Watch=Stopwatch.createStarted();//share 1 worker pool
+		for(int i=0;i<1000;i++){
+			
+			Optional<Vol> optional=createRandomVol();
+			for(Vol vol:optional.asSet()){
+				//
+				if(passAll(nets,vol)!=-1){
+					passed++;
+				}
+				//dtime2+=watch2.elapsed(TimeUnit.MILLISECONDS);
+				if(useHorizontalFlip){
+					Vol converted=convertToHorizontalVol(vol);
+					if(passAll(nets,converted)!=-1){
+						horizontal++;
+					}
+				}
+				/*
+				
+				*/
+				
+				Optional<Vol> passedOption=cascadeNet.filterParents(vol);
+				if(passedOption.isPresent()){
+					passed++;
+				}
+				Vol converted=convertToHorizontalVol(vol);
+				Optional<Vol> horizontalPassed=cascadeNet.filterParents(converted);
+				if(horizontalPassed.isPresent()){
+					horizontal++;
+				}
+				
+				
+			}
+		}
+	//	LogUtils.log("time:"+test1Watch.elapsed(TimeUnit.SECONDS)+"s"+" passed="+passed+" horizontal="+horizontal+",time2="+time2+"ms");
+	//	LogUtils.log("core:"+dtime+"ms"+",dtime1="+dtime1+",dtime2="+dtime2+",dtime3="+dtime3);
+		
+	}
+	public  JsArray<Net> toNetList(){
+		JsArray<Net> nets=JavaScriptObject.createArray().cast();
+		for(int i=0;i<cascades.size();i++){
+			nets.push(cascades.get(i).getNet());
+		}
+		return nets;
+	}
+	
+	   public static double passAll(JsArray<Net> nets,Vol vol){
+		   double r=0;
+		   
+		   for(int i=0;i<nets.length();i++){
+			   Vol result=nets.get(i).forward(vol);
+			   if(!CascadeNet.isZeroIndexMostMatched(result)){
+				   return -1;
+			   }
+			   r=result.getW(0);
+		   }
+		   
+		   return r;
+	   }
 	private HorizontalPanel cerateTestButtons() {
 		HorizontalPanel panel=new HorizontalPanel();
+		
 
 		Button test1Bt=new Button("Test1",new ClickHandler() {
 			
 			@Override
 			public void onClick(ClickEvent event) {
-				Stopwatch test1Watch=Stopwatch.createStarted();//share 1 worker pool
-				for(int i=0;i<1000;i++){
-					createRandomVol();
-				}
-				LogUtils.log("time:"+test1Watch.elapsed(TimeUnit.SECONDS)+"s");
+				doTest1();
 			}
 		});
 		panel.add(test1Bt);
@@ -1956,7 +2085,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 		CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),createNewNet(),null);
 		cascades.add(next);
 		
-		passedVolsForTest.clear();
+		passedNegativeVolsForTest.clear();
 		//trainPositiveOnly();
 		droppedList.addAll(temporalyIgnoreList);
 		temporalyIgnoreList.clear();
@@ -1971,7 +2100,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 		
 		//for auto
 		if(cascades.size()>=autoRandomOffStage.getValue()){
-			createRandomVolCheck.setValue(false);
+			createRandomVolCheck.setValue(false,true);//not fire event
 		}
 	}
 
@@ -2182,7 +2311,7 @@ charged searchpassedImage
 					}else{
 					
 				//	LogUtils.log(trained+","+rate);
-					Optional<Vol> optional=createRandomVol(getLastCascade());
+					Optional<Vol> optional=createPassedRandomVol(getLastCascade());
 					if(!optional.isPresent()){
 						Window.alert("creating random vol faild maybe image problems");
 						return;
@@ -2380,7 +2509,7 @@ charged searchpassedImage
 				}	
 				
 				
-		passedVolsForTest.clear();
+		passedNegativeVolsForTest.clear();
 		temporalyIgnoreList.clear();
 		trainedPositiveDatas.clear();		
 				
@@ -3378,7 +3507,7 @@ charged searchpassedImage
 			trainedPositiveDatas.add(new PassedData(vol, pdata.getFileName()+"#"+rect.toKanmaString().replace(",", "-")));
 			//LogUtils.log("trained-positive:"+trained);
 			
-			Optional<Vol> neg= createRandomVol(cascadeNet);//finding data is really take time
+			Optional<Vol> neg= createPassedRandomVol(cascadeNet);//finding data is really take time
 			if(!neg.isPresent()){
 				Window.alert("faild training");
 				return;
@@ -3399,14 +3528,14 @@ charged searchpassedImage
 	trainSecond=true;
 	}
 	
-	public Optional<Vol> createRandomVol(CascadeNet cascadeNet){
+	public Optional<Vol> createPassedRandomVol(CascadeNet cascadeNet){
 		
-		Vol filterd=null;
+		Vol passedParentFilter=null;
 		
 		//int maxError=10000000;
 		//int error=0;
 		
-		while(filterd==null){
+		while(passedParentFilter==null){
 			Optional<Vol> optional2=createRandomVol();
 			if(!optional2.isPresent()){//usually never faild creating randon vol
 				return Optional.absent();
@@ -3417,8 +3546,17 @@ charged searchpassedImage
 		
 		Optional<Vol> optional=cascadeNet.filterParents(vol);
 		if(optional.isPresent()){
-			filterd=optional.get();
+			passedParentFilter=optional.get();
 			}
+		else{
+			if(useHorizontalFlip){
+				Vol converted=convertToHorizontalVol(vol);
+				Optional<Vol> horizontalPassed=cascadeNet.filterParents(converted);
+				if(horizontalPassed.isPresent()){
+					passedParentFilter=horizontalPassed.get();
+				}
+			}
+		}
 		if(negativesZip.getDatas().size()==0){
 			Window.alert("No more Negative Images return null");
 			break;
@@ -3433,7 +3571,7 @@ charged searchpassedImage
 		*/
 		
 		}
-		return Optional.of(filterd);
+		return Optional.of(passedParentFilter);
 	}
 	
 	private void startTraining(int trained,CascadeNet cascadeNet){
@@ -3579,7 +3717,7 @@ charged searchpassedImage
 		
 		int negatives=0;
 		while(negatives<trained){
-			Optional<Vol> neg=createRandomVol(getLastCascade());
+			Optional<Vol> neg=createPassedRandomVol(getLastCascade());
 			if(!neg.isPresent()){
 				Window.alert("somethin happend on creating random data");
 			}
@@ -3809,7 +3947,7 @@ charged searchpassedImage
 	*/
 	boolean trainSecond;
 	
-	List<PassedData> passedVolsForTest=Lists.newArrayList();
+	List<PassedData> passedNegativeVolsForTest=Lists.newArrayList();
 	
 	
 	
@@ -3976,17 +4114,17 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		}
 		
 		//create new negative datas
-		if(passedVolsForTest.size()==0){
+		if(passedNegativeVolsForTest.size()==0){
 			stopWatch.stop();
 			Stopwatch stopWatch2=Stopwatch.createStarted();
 			for(int i=0;i<testNumber;i++){
-				Optional<Vol> optionalR=createRandomVol(cascade);
+				Optional<Vol> optionalR=createPassedRandomVol(cascade);
 				if(!optionalR.isPresent()){
 					Window.alert("invalid test data");
 					throw new RuntimeException("invalid data");
 				}
 				Vol vol=optionalR.get();
-				passedVolsForTest.add(new PassedData(vol,lastDataUrl));
+				passedNegativeVolsForTest.add(new PassedData(vol,lastDataUrl));
 				//dummyCascadeForKeepNegativeTrained.getTrainer().train(vol, 1);//dummy train.maybe generate inner.
 			}
 			LogUtils.log("generate-parent-filter passed vol:"+ stopWatch2.elapsed(TimeUnit.SECONDS)+"s");
@@ -3995,8 +4133,8 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		}
 		
 		for(int i=0;i<testNumber;i++){
-			String imageDataUrl=passedVolsForTest.get(i).getDataUrl();
-			Vol vol=passedVolsForTest.get(i).getVol();
+			String imageDataUrl=passedNegativeVolsForTest.get(i).getDataUrl();
+			Vol vol=passedNegativeVolsForTest.get(i).getVol();
 			Vol result= cascade.getNet().forward(vol,true);//i'm not sure trained true no effect on result,i guess this mean use just cached inside
 			if(i==0){
 			//LogUtils.log(vol);
@@ -4025,31 +4163,75 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 	}
 
 
+
+/**
+ * do single action
+ * @param cascadeNet
+ * @return
+ */
+public Optional<Vol> getPossiblePassedRandomVol(CascadeNet cascadeNet){
+	Optional<Vol> randomVol=createRandomVol();//random or orderd
+	for(Vol vol:randomVol.asSet()){
+		Optional<Vol> optional=cascadeNet.filterParents(vol);
+		if(optional.isPresent()){
+			return optional;
+		}else{
+			if(useHorizontalFlip){
+				Vol flipped=convertToHorizontalVol(vol);
+				Optional<Vol> flippedOptional=cascadeNet.filterParents(flipped);
+				if(flippedOptional.isPresent()){
+					//LogUtils.log("flipped-find");
+					return flippedOptional;
+				}
+			}
+			//TODO support truning
+		}
+	}
+	return Optional.absent();
+}
+
 public int negativeTestSize=100;
+
+private int searchPassedImageWorkerSize;
 /*
  * new search passed image action
  */
-	public int searchPassedImage(boolean isInitial){
+
+//TODO add need image size
+	public int searchPassedImage(boolean isInitial,int needSize){
 		
 		//TODO support out of image;
-		
-		//just search don't care doesn't find or faild pass 
-		CascadeNet cascadeNet=getLastCascade();
-		Optional<Vol> randomVol=createRandomVol();//random or orderd
-		for(Vol vol:randomVol.asSet()){
-			Optional<Vol> optional=cascadeNet.filterParents(vol);
-			for(Vol passed:optional.asSet()){
-				if(passedVolsForTest.size()<negativeTestSize){//make test first
-					//this PassedData no need index,just test and must be not 0
-					passedVolsForTest.add(new PassedData(passed,lastDataUrl));
-				}else{
-					recycledNegatives.add(new PassedData(passed,detectNegativeIndex(passed)));
-				}
-			}
+		if(negativesZip.getDatas().size()==0){
+			Window.alert("empty negative images");
+			doCancelAuto();
 		}
 		
+		//just search don't care doesn't find or faild pass 
+		if(searchPassedImageWorkerSize==0 || useRandomOnCreateVol){//no worker,random image not suite worker
+		CascadeNet cascadeNet=getLastCascade();
+		Optional<Vol> passedVol=getPossiblePassedRandomVol(cascadeNet);
+		
+		for(Vol vol:passedVol.asSet()){
+				if(passedNegativeVolsForTest.size()<negativeTestSize){//make test first
+					//this PassedData no need index,just test and must be not 0
+					passedNegativeVolsForTest.add(new PassedData(vol,lastDataUrl));
+				}else{
+					recycledNegatives.add(new PassedData(vol,detectNegativeIndex(vol)));
+			}
+		}
+		}else{
+			searchPassedImageWithWorker(isInitial,needSize);
+		}
+		
+		//running worker?
+		
+		
+		
+		
+		
+		
 		if(isInitial){
-		return passedVolsForTest.size()+usedNegatives.size()+recycledNegatives.size();	
+		return passedNegativeVolsForTest.size()+usedNegatives.size()+recycledNegatives.size();	
 		}else{
 		return recycledNegatives.size();
 		}
@@ -4057,6 +4239,166 @@ public int negativeTestSize=100;
 	
 
 
+	private boolean searchPassedImageWorkerRunning;
+	
+	private boolean hasEnoughSearchPassedImage(boolean isInitial,int size){
+		if(isInitial){
+			return passedNegativeVolsForTest.size()+usedNegatives.size()+recycledNegatives.size()>=size;	
+			}else{
+			return recycledNegatives.size()>=size;
+			}
+	}
+	
+		//this method called every 1-10 ms
+	private synchronized void searchPassedImageWithWorker(final boolean isInitial,final int size) {
+	
+	
+			if(searchPassedImageWorkerRunning){
+			return;//do nothing
+			}
+			LogUtils.log("searchPassedImageWithWorker-called:"+isInitial+",size:"+size);
+			searchPassedImageWorkerRunning=true;
+		
+		
+		List<CascadeNet> parents=Lists.newArrayList(cascades);
+		parents.remove(parents.size()-1);//
+		
+		final String json=toJson(parents);
+		
+		final List<CVImageData> negatives=Lists.newArrayList(negativesZip.getDatas());
+		
+		searchPassedImageWorker = new WorkerPool(searchPassedImageWorkerSize,"/detect/worker.js") {
+			int extracted;
+			@Override
+			public void extractData(WorkerPoolData data, MessageEvent event) {
+				
+				
+				String name=data.getParameterString("name");
+				LogUtils.log("searchPassedImageWithWorker-extract:"+name);
+				CVImageData negativeData=null;
+				for(CVImageData negative:negativesZip.getDatas()){
+					if(negative.getFileName().equals(name)){
+						negativeData=negative;
+						break;
+					}
+				}
+				if(negativeData==null){
+					LogUtils.log("data not found in zip:"+name);
+					return;
+				}
+				Optional<ImageElement> optional=negativesZip.getImageElement(negativeData);
+				if(!optional.isPresent()){
+					LogUtils.log("image not found in zip:"+name);
+					return;
+				}
+				
+				JsArray<HaarRect> rects=Worker2.getDataAsJavaScriptObject(event).cast();
+				LogUtils.log("searchPassedImageWithWorker-extract:"+name+",rects="+rects.length());
+				if(rects.length()==0){
+					negativesZip.getDatas().remove(negativeData);//consumed;
+					return;
+				}
+				synchronized(this){//possible return same time
+					if(hasEnoughSearchPassedImage(isInitial,size)){
+						return;//if others done
+					}
+					
+					ImageElementUtils.copytoCanvas(optional.get(), sharedCanvas);
+					Canvas grayscale=CanvasUtils.convertToGrayScale(sharedCanvas, null);
+					final ImageData grayScaleImageData=ImageDataUtils.copyFrom(grayscale);
+					
+				for(int i=0;i<rects.length();i++){
+					HaarRect rect=rects.get(i);
+					Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnly(grayScaleImageData,rect.getX(),rect.getY(), rect.getWidth(), rect.getHeight(), GWTConvNetJs.netWidth+GWTConvNetJs.edgeSize,GWTConvNetJs.netHeight+GWTConvNetJs.edgeSize);
+					
+					
+					int[] binaryPattern=GWTConvNetJs.createLBPDepthFromUint8ArrayPacked(resized, false);
+					
+					Vol vol=GWTConvNetJs.createVolFromIndexes(binaryPattern,GWTConvNetJs.parseMaxLBPValue());
+					addSearchingNegativeVol(vol);
+					
+					}
+				extracted++;
+				if(extracted==negatives.size()){
+					LogUtils.log("reach end of all images.maybe canceled by auto controler");//TODO throw empty error
+				}
+				
+					negativesZip.getDatas().remove(negativeData);//consumed;
+				
+					if(hasEnoughSearchPassedImage(isInitial,size)){
+					LogUtils.log("searchPassedImageWithWorker-hasEnoughSearchPassedImage:");
+					setCancelled(true);
+					
+					searchPassedImageWorkerRunning=false;
+					searchPassedImageWorker=null;
+					}
+				}
+			}
+			};
+		
+		
+		
+		
+				
+		WorkerPoolMultiCaller<CVImageData> multiCaller=new WorkerPoolMultiCaller<CVImageData>(searchPassedImageWorker,negatives) {
+			
+			@Override
+			public WorkerPoolData convertToData(CVImageData data) {
+				Optional<ImageElement> element=negativesZip.getImageElement(data);
+				if(!element.isPresent()){
+					//no need anymore
+					negativesZip.getDatas().remove(data);
+					return null;//TODO support error
+				}
+				ImageElementUtils.copytoCanvas(element.get(), sharedCanvas);
+				
+				Canvas grayscale=CanvasUtils.convertToGrayScale(sharedCanvas, null);
+				final ImageData grayScaleImageData=ImageDataUtils.copyFrom(grayscale);
+				
+				List<Rect> rects=loadRect(element.get(), data.getFileName());
+				
+				//convert to rects TODO method? #HaarRect.from(List<Rect)
+				JsArray<HaarRect> rectArray= JsArray.createArray().cast();
+				for(int i=0;i<rects.size();i++){
+					Rect rect=rects.get(i);
+					rectArray.push(HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));
+				}
+				
+				final DetectParam param=DetectParam.create(json, grayScaleImageData, rectArray);
+				param.setUseHorizontalFlip(useHorizontalFlip);
+				param.setImageData(grayScaleImageData);
+				param.setJson(json);
+				
+				HashedParameterData poolData=new HashedParameterData() {
+					
+					@Override
+					public void postData(Worker2 worker) {
+						
+						worker.postMessage(param);
+					}
+					
+				};
+				poolData.setParameterString("name", data.getFileName());
+				
+				LogUtils.log("searchPassedImageWithWorker-multicaller-called:"+data.getFileName());
+				
+				return poolData;
+			}
+			
+		};
+		
+		
+		multiCaller.start(10);
+	}
+
+	protected void addSearchingNegativeVol(Vol vol) {
+		if(passedNegativeVolsForTest.size()<negativeTestSize){//make test first
+			//this PassedData no need index,just test and must be not 0
+			passedNegativeVolsForTest.add(new PassedData(vol,lastDataUrl));
+		}else{
+			recycledNegatives.add(new PassedData(vol,detectNegativeIndex(vol)));
+		}
+	}
 
 	public void doTestCascade(CascadeNet cascade){
 		
@@ -4159,12 +4501,23 @@ public int negativeTestSize=100;
 	private Map<String,List<Rect>> rectsMap=new HashMap<String, List<Rect>>();
 	
 	private boolean useRandomOnCreateVol=true;//on first stage it's better use random
+	private boolean useHorizontalFlip=false;//on first stage it's better use random
 	//private ImageElement lastImageElement;
 	private ImageData lastImageData;
 	private CVImageData lastData;
+	
+	/*
+	long dtime=0;
+	long dtime1;
+	long dtime2;
+	long dtime3;
+	long dtime4;
+	*/
+	
 	public Optional<Vol> createRandomVol(){
-		Stopwatch watch=Stopwatch.createStarted();
+		
 		for(int j=0;j<20;j++){ //just check image exist
+	//		Stopwatch watch1=Stopwatch.createStarted();
 		int index=useRandomOnCreateVol?getRandom(0, negativesZip.size()):0;
 		
 		CVImageData pdata=negativesZip.get(index);
@@ -4177,34 +4530,38 @@ public int negativeTestSize=100;
 		//this action kill 
 		
 		ImageData imageData=null;
-		ImageElement negativeImage=null;
-		
+		//ImageElement negativeImage=null;
+	//	dtime1+=watch1.elapsed(TimeUnit.MILLISECONDS);
+		//Stopwatch watch2=Stopwatch.createStarted();
 		if(pdata!=lastData){
 		Optional<ImageElement> optional=negativesZip.getImageElement(pdata);
 		if(!optional.isPresent()){
 			LogUtils.log("skip.image not found in zip(or filter faild):"+pdata.getFileName()+" of "+negativesZip.getName());
 			continue;
 		}
-		ImageElement image=negativeImage=optional.get();
+		ImageElement image=optional.get();
 		ImageElementUtils.copytoCanvas(image, sharedCanvas);
 		imageData=sharedCanvas.getContext2d().getImageData(0, 0, sharedCanvas.getCoordinateSpaceWidth(), sharedCanvas.getCoordinateSpaceHeight());
+		
 		}else{
 			imageData=lastImageData;
 		}
 		
 		lastData=pdata;
 		lastImageData=imageData;
-		
-		
-		
-		List<Rect> rects=loadRect(negativeImage,pdata.getFileName());
+	//	dtime2+=watch2.elapsed(TimeUnit.MILLISECONDS);
+		//Stopwatch watch3=Stopwatch.createStarted();
+		//rect must be initialized when load
+		List<Rect> rects=loadRect(null,pdata.getFileName());
 		Rect rect=rects.remove(0);
 		if(rects.size()==0){
 				negativesZip.getDatas().remove(pdata);//remove permanently,if neee use,do refrash page
 				LogUtils.log("rect is empty removed:"+pdata.getFileName()+","+getNegativeInfo());
 		
 		}
+		//dtime3+=watch3.elapsed(TimeUnit.MILLISECONDS);
 		
+		//Stopwatch watch=Stopwatch.createStarted();
 		Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnly(imageData,rect.getX(),rect.getY(), rect.getWidth(), rect.getHeight(), GWTConvNetJs.netWidth+GWTConvNetJs.edgeSize,GWTConvNetJs.netHeight+GWTConvNetJs.edgeSize);
 		
 		
@@ -4212,7 +4569,7 @@ public int negativeTestSize=100;
 		
 		Vol vol=GWTConvNetJs.createVolFromIndexes(binaryPattern,GWTConvNetJs.parseMaxLBPValue());
 		
-		
+		//dtime+=watch.elapsed(TimeUnit.MILLISECONDS);
 		
 			return Optional.of(vol);
 		
@@ -4251,6 +4608,10 @@ public int negativeTestSize=100;
 	private CheckBox useHorizontalFlipCheck;
 
 	private Label messageLabel;
+
+	private ToStringValueListBox<Integer> searchVolWorkerSizeBox;
+
+	private WorkerPool searchPassedImageWorker;
 	public static Vol createVolFromImageData(ImageData imageData){
 		//return createGrayscaleImageVolFromImageData(imageData);
 		return createLBPDepthVolFromImageData(imageData,true);
@@ -4507,12 +4868,14 @@ public int negativeTestSize=100;
 	
 	@SuppressWarnings("unchecked")
 	private List<Rect> loadRect(ImageElement image, String fileName) {
-		int minW=detectWidth.getValue();
-		int minH=detectHeight.getValue();
-		double min_scale=1.2;//no need really small pixel
+		
 		
 		List<Rect> rects=rectsMap.get(fileName);
 		if(rects==null){
+			int minW=detectWidth.getValue();
+			int minH=detectHeight.getValue();
+			double min_scale=1.2;//no need really small pixel
+			
 			rects=RectGenerator.generateRect(image.getWidth(),image.getHeight(), 4, 1.4,minW,minH,min_scale);
 			//rects=generateRect(image, 2, 1.2);//this is too much make rects
 			rectsMap.put(fileName, ListUtils.shuffle(rects));
@@ -4590,208 +4953,6 @@ public int negativeTestSize=100;
 		return canvas.toDataUrl();
 	}
 	
-	/*
-	public void onModuleLoad() {
-	
-		final Net net=ConvnetJs.createImageNet(32, 32, 3, 10);
-		
-		final Trainer trainer=ConvnetJs.createTrainer(net,10);//batch not so effect
-		
-		
-		VerticalPanel root=new VerticalPanel();
-		RootLayoutPanel.get().add(root);
-		
-		FileUploadForm cifar10Upload=FileUtils.createSingleFileUploadForm(new DataArrayListener() {
-			
-			private List<Cifar10Data> datas;
-
-			@Override
-			public void uploaded(File file, Uint8Array array) {
-				Stopwatch watch=Stopwatch.createStarted();
-				int max=1000;
-				
-				datas = new Cifar10Parser().parse(array.toByteArray(), "file");
-				LogUtils.log("cifar10 parsed"+watch.elapsed(TimeUnit.SECONDS)+"s");
-				
-				watch.reset();watch.start();
-				List<Vol> vols=Lists.newArrayList();
-				
-				
-				
-				for(int j=0;j<5;j++){ //train x *
-				for(int i=0;i<max;i++){
-					Vol vol=ConvnetJs.createGrayVol(datas.get(i).getImageData());
-					trainer.train(vol, datas.get(i).getClassNumber());
-					vols.add(vol);
-				}
-				}
-				LogUtils.log("cifar10 trained:"+watch.elapsed(TimeUnit.SECONDS)+"s");
-				watch.reset();watch.start();
-				int matched=0;
-				//test same
-				for(int i=0;i<max;i++){
-					
-					int maxIndex=0;
-					double maxValue=0;
-					Vol test=net.forward(ConvnetJs.createGrayVol(datas.get(i).getImageData()));
-					for(int c=0;c<10;c++){
-						double v=test.getW(c);
-						if(v>maxValue){
-							maxValue=v;
-							maxIndex=c;
-						}
-					}
-					
-					if(maxIndex==datas.get(i).getClassNumber()){
-						matched++;
-					}
-				}
-				LogUtils.log("cifar10 analyzed:"+watch.elapsed(TimeUnit.SECONDS)+"s");
-				
-				LogUtils.log(matched+"/"+max);
-				
-				//x 10 177/1000 
-			}
-		}, true, false);
-		
-		root.add(cifar10Upload);
-	}*/
-	
-	
-	//0-1
-	/*
-	public void onModuleLoad() {
-		final int classNumber=2;
-		LogUtils.log("2-class");
-		final Net net=ConvnetJs.createImageNet(32, 32, 3, classNumber);
-		
-		final Trainer trainer=ConvnetJs.createTrainer(net,4);//batch not so effect
-		
-		final Canvas sharedCanvas=Canvas.createIfSupported();
-		
-		final VerticalPanel root=new VerticalPanel();
-		RootLayoutPanel.get().add(root);
-		
-		FileUploadForm cifar10Upload=FileUtils.createSingleFileUploadForm(new DataArrayListener() {
-			
-			private List<Cifar10Data> datas;
-
-			@Override
-			public void uploaded(File file, Uint8Array array) {
-				Stopwatch watch=Stopwatch.createStarted();
-				int max=1000;
-				
-				datas = new Cifar10Parser().parse(array.toByteArray(), "file");
-				LogUtils.log("cifar10 parsed"+watch.elapsed(TimeUnit.SECONDS)+"s");
-				
-				watch.reset();watch.start();
-				List<Vol> vols=Lists.newArrayList();
-				
-				
-				
-				int zeroAdded=0;
-				for(int i=0;i<max;i++){
-					Vol vol=ConvnetJs.createGrayVol(datas.get(i).getImageData());
-					
-					int id=datas.get(i).getClassNumber();
-					if(id!=0){
-						id=1;
-					}
-					
-					if(id==0){
-						trainer.train(vol, id);
-						
-						
-						
-						CanvasUtils.createCanvas(sharedCanvas, datas.get(i).getImageData());
-						root.add(new Image(sharedCanvas.toDataUrl()));
-						vols.add(vol);
-						zeroAdded++;
-					}else{
-						
-					}
-					
-					
-				}
-				int otherAdded=0;
-				for(int i=0;i<max;i++){
-					Vol vol=ConvnetJs.createGrayVol(datas.get(i).getImageData());
-					
-					int id=datas.get(i).getClassNumber();
-					if(id!=0){
-						id=1;
-					}
-					
-					if(id==0){
-						
-						
-					}else{
-					//	trainer.train(vol, id);
-						//vols.add(vol);
-						otherAdded++;
-						if(otherAdded==zeroAdded){
-							break;
-						}
-					}
-					
-					
-				}
-				
-				
-				
-				LogUtils.log("cifar10 trained:"+watch.elapsed(TimeUnit.SECONDS)+"s");
-				watch.reset();watch.start();
-				int matched=0;
-				int matched2=0;
-				int ignoreMatch=0;
-				int missMatch=0;
-				//test same
-				for(int i=0;i<max;i++){
-					
-					int maxIndex=0;
-					double maxValue=0;
-					Vol test=net.forward(ConvnetJs.createGrayVol(datas.get(i).getImageData()));
-					//Vol test=net.forward(vols.get(i));
-					if(datas.get(i).getClassNumber()==0){
-				//		LogUtils.log(test);
-					}
-					
-					for(int c=0;c<classNumber;c++){
-						double v=test.getW(c);
-						if(v>maxValue){
-							maxValue=v;
-							maxIndex=c;
-						}
-					}
-					
-					if(maxIndex==0){
-						if(datas.get(i).getClassNumber()==0){
-							matched++;
-						}else{
-							missMatch++;
-						}
-					}else{
-						if(datas.get(i).getClassNumber()==0){
-							ignoreMatch++;
-						}else{
-							matched2++;
-						}
-					}
-					
-					
-					
-					
-				}
-				LogUtils.log("cifar10 analyzed:"+watch.elapsed(TimeUnit.SECONDS)+"s");
-				
-				LogUtils.log(matched+":"+matched2+"/"+max+" ignored="+ignoreMatch+",miss="+missMatch);
-				
-				//x 10 177/1000 
-			}
-		}, true, false);
-		
-		root.add(cifar10Upload);
-	}*/
 	
 	public static  final native void test() /*-{
 var layer_defs = [];
@@ -4825,49 +4986,7 @@ var probability_volume2 = net.forward(x);
 console.log('probability that x is class 0: ' + probability_volume2.w[0]);
     }-*/;
 	
-	/*
-	public void test2(){
-		Net net=ConvnetJs.createImageNet(32, 32, 3, 2);
-		Vol tmp=ConvnetJs.createVol(32, 32,3,  0);
-		LogUtils.log(net.forward(tmp));
-		
-		Trainer trainer=ConvnetJs.createTrainer(net,1);//batch not so effect
-		
-		Stopwatch watch=Stopwatch.createStarted();
-		
-		for(int i=0;i<100;i++){
-		trainer.train(tmp, 0);
-		}
-		watch.stop();
-		LogUtils.log(watch.elapsed(TimeUnit.MILLISECONDS));
-		
-		Vol tmp2=ConvnetJs.createGrayVol(32, 32,3,  255);
-		
-		LogUtils.log("probably:"+net.forward(tmp).getW(0));
-		LogUtils.log("probably:"+net.forward(tmp2).getW(0));
-	}
 	
-	public void test3(){
-		Net net=ConvnetJs.createImageNet(32, 32, 3, 2);
-		Vol tmp=ConvnetJs.createGrayVol(32, 32,3,  0);
-		LogUtils.log(net.forward(tmp));
-		
-		Trainer trainer=ConvnetJs.createTrainer(net,1);//batch not so effect
-		
-		Stopwatch watch=Stopwatch.createStarted();
-		
-		for(int i=0;i<100;i++){
-		trainer.train(tmp, 0);
-		}
-		watch.stop();
-		LogUtils.log(watch.elapsed(TimeUnit.MILLISECONDS));
-		
-		Vol tmp2=ConvnetJs.createGrayVol(32, 32,3,  255);
-		
-		LogUtils.log("probably:"+net.forward(tmp).getW(0));
-		LogUtils.log("probably:"+net.forward(tmp2).getW(0));
-	}
-	*/
 	
 
 }
