@@ -62,9 +62,11 @@ public abstract class StageControler {
 		}
 		
 		searched=0;
+		sendInfo("search-negative:");
 	}
 	
 	public void start(final LearningInfo learningInfo){
+		
 		checkState(doing==false,"error somehow other thread runnning.");
 		//initialize;
 		stageResults=Lists.newArrayList();
@@ -92,6 +94,7 @@ public abstract class StageControler {
 			@Override
 			public void run() {
 				if(canceled){
+					sendInfo("cancelled:by user");
 					LogUtils.log("cancelling(but can't stop until initial training)");
 					doing=false;
 					cancel();
@@ -104,6 +107,7 @@ public abstract class StageControler {
 				}
 				//ratio check
 				if(mode==MODE_INITIAL && ratio<learningInfo.minRatio){
+					sendInfo("cancelled:reach ratio");
 					onEndTraining(false);
 					cancel();//timer
 					doing=false;
@@ -124,16 +128,13 @@ public abstract class StageControler {
 					variationSize=0;
 					learningTime=0;
 					mode=MODE_REPEAT;
-					
+					sendInfo("repeat-learning:");
 					//how many need? test(100) + pos x ratio
 				}else if(mode==MODE_REPEAT){
 					score=repeating();
 					learningTime++;
 					
 					if(learningTime==learningInfo.maxLearning){
-						
-						mode=MODE_SEARCH_PASSED_IMAGES;
-						
 						
 						boolean initial=false;
 						
@@ -160,7 +161,7 @@ public abstract class StageControler {
 					learningTime=0;
 					mode=MODE_REPEAT;
 					
-					
+					sendInfo("repeat-learning:");
 					
 					
 				}else if(mode==MODE_SEARCH_PASSED_IMAGES){
@@ -168,6 +169,7 @@ public abstract class StageControler {
 					int imageSize=searchPassedImages(initialImageSearch,needPassedImageSize,searched);//just call
 					if(imageSize>=needPassedImageSize){
 						LogUtils.log("finish-searching passed images:");
+						sendInfo("training:");
 						if(initialImageSearch){
 							mode=MODE_INITIAL;
 						}else{
@@ -246,6 +248,7 @@ public abstract class StageControler {
 						stageResults.add(stageResult);
 						if(stageResults.size()==learningInfo.maxStage){
 							
+							sendInfo("finished:");
 							onEndTraining(true);
 							cancel();//timer
 							

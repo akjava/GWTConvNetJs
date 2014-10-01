@@ -722,6 +722,8 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		}
 		
 	NumberFormat numberFormat=NumberFormat.getFormat("0.000");
+
+	private Label statusLabel;
 	private Panel createFullAutoControls() {
 		final StageResultEditor resultEditor=new StageResultEditor();
 		stageResultEditorDriver.initialize(resultEditor);
@@ -876,6 +878,9 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 
 					@Override
 					public Score repeating() {
+						if(learningTime==0){
+							messageLabel.setText("start-repeat-learning");
+						}
 						doRepeat(false);
 						TestResult result=doTestLastPositiveTrainedAll();
 						TestResult missHit=doTestCascadeReal(getLastCascade(),false);
@@ -883,14 +888,16 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 						
 						
 						Score score= new Score(result.getMatchRate(),missHit.getFalseAlarmRate());
-						
+						if(learningTime%100==0){
+							messageLabel.setText("learning:"+learningTime+",score:"+score+",item="+lastLeaningList.size());
 						if(learningTime%500==0){
 							if(learningTime!=0){
-								LogUtils.log("learning:"+learningTime+"score:"+score+",item="+lastLeaningList.size()+",time="+watch.elapsed(TimeUnit.SECONDS)+"s");
+								LogUtils.log("learning:"+learningTime+",score:"+score+",item="+lastLeaningList.size()+",time="+watch.elapsed(TimeUnit.SECONDS)+"s");
 								
 							}
 							
 							watch.reset();watch.start();
+						}
 						}
 						
 						
@@ -919,7 +926,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 
 					@Override
 					public void sendInfo(String message) {
-						messageLabel.setText(message);
+						statusLabel.setText(message);
 					}
 					
 				};
@@ -943,8 +950,13 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		});
 		buttons.add(test1Cancel);
 		
+		HorizontalPanel infoPanel=new HorizontalPanel();
+		panel.add(infoPanel);
+		statusLabel = new Label();
+		statusLabel.setWidth("200px");
+		infoPanel.add(statusLabel);
 		messageLabel = new Label();
-		panel.add(messageLabel);
+		infoPanel.add(messageLabel);
 		
 		
 		HorizontalPanel h=new HorizontalPanel();
@@ -1048,7 +1060,9 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		
 		
 		//cancel searching worker,TODO method?
-		searchPassedImageWorker.setCancelled(true);
+		if(searchPassedImageWorker!=null){
+			searchPassedImageWorker.setCancelled(true);
+			}
 		searchPassedImageWorkerRunning=false;
 		searchPassedImageWorker=null;
 		
@@ -2090,7 +2104,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 		CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),createNewNet(),null);
 		cascades.add(next);
 		
-		passedNegativeVolsForTest.clear();
+		passedNegativeVolsForTest.clear();//TODO recycle
 		//trainPositiveOnly();
 		droppedList.addAll(temporalyIgnoreList);
 		temporalyIgnoreList.clear();
@@ -3771,7 +3785,9 @@ charged searchpassedImage
 				successMatch++;
 				//successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
 			}else{
-				temporalyIgnoreList.add(trainedData.getDataUrl());
+				if(debugThumbImage){
+					temporalyIgnoreList.add(trainedData.getDataUrl());
+				}
 				faildMatch++;
 				//faildPosPanel.add(new Image(resizedCanvas.toDataUrl()));
 			}
@@ -4130,7 +4146,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 				}
 				Vol vol=optionalR.get();
 				passedNegativeVolsForTest.add(new PassedData(vol,lastDataUrl));
-				//dummyCascadeForKeepNegativeTrained.getTrainer().train(vol, 1);//dummy train.maybe generate inner.
+				dummyCascadeForKeepNegativeTrained.getTrainer().train(vol, 1);//dummy train.maybe generate inner.
 			}
 			LogUtils.log("generate-parent-filter passed vol:"+ stopWatch2.elapsed(TimeUnit.SECONDS)+"s");
 			stopWatch.start();
@@ -4138,7 +4154,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 		}
 		
 		for(int i=0;i<testNumber;i++){
-			String imageDataUrl=passedNegativeVolsForTest.get(i).getDataUrl();
+			
 			Vol vol=passedNegativeVolsForTest.get(i).getVol();
 			Vol result= cascade.getNet().forward(vol,true);//i'm not sure trained true no effect on result,i guess this mean use just cached inside
 			if(i==0){
@@ -4148,11 +4164,13 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			if(!CascadeNet.isZeroIndexMostMatched(result)){
 			//if(value.getW(1)>value.getW(0)){
 				if(debugThumbImage){
+				String imageDataUrl=passedNegativeVolsForTest.get(i).getDataUrl();
 				successNegativesPanel.add(new Image(imageDataUrl));
 				}
 				successMiss++;
 			}else{
 				if(debugThumbImage){
+				String imageDataUrl=passedNegativeVolsForTest.get(i).getDataUrl();
 				faildNegativePanel.add(new Image(imageDataUrl));
 				}
 				missMatch++;
@@ -4210,7 +4228,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 			if(!searchWatch.isRunning()){
 				searchWatch.start();
 			}
-			messageLabel.setText("start-search:"+isInitial+"needSize="+needSize);
+			messageLabel.setText("start-search:"+isInitial+" needSize="+needSize);
 		}
 		
 		
@@ -4231,6 +4249,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 						if(passedNegativeVolsForTest.size()<negativeTestSize){//make test first
 							//this PassedData no need index,just test and must be not 0
 							passedNegativeVolsForTest.add(new PassedData(vol,lastDataUrl));
+							dummyCascadeForKeepNegativeTrained.getTrainer().train(vol, 1);//dummy train.maybe generate inner.
 						}else{
 							recycledNegatives.add(new PassedData(vol,detectNegativeIndex(vol)));
 					}
@@ -4419,9 +4438,14 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 	}
 
 	protected void addSearchingNegativeVol(Vol vol) {
+		List<Double> debug=vol.getWAsList();
+		
+		LogUtils.log("negative-vol:size="+debug.size()+","+Joiner.on(",").join(debug));
+		
 		if(passedNegativeVolsForTest.size()<negativeTestSize){//make test first
 			//this PassedData no need index,just test and must be not 0
 			passedNegativeVolsForTest.add(new PassedData(vol,lastDataUrl));
+			dummyCascadeForKeepNegativeTrained.getTrainer().train(vol, 1);//dummy train
 		}else{
 			recycledNegatives.add(new PassedData(vol,detectNegativeIndex(vol)));
 		}
