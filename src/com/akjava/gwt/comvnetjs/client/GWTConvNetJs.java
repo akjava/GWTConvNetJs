@@ -21,6 +21,7 @@ import com.akjava.gwt.comvnetjs.client.worker.DetectParam1;
 import com.akjava.gwt.comvnetjs.client.worker.DetectParam2;
 import com.akjava.gwt.comvnetjs.client.worker.HaarRect;
 import com.akjava.gwt.comvnetjs.client.worker.MakeRectParam;
+import com.akjava.gwt.comvnetjs.client.worker.NegativeResult;
 import com.akjava.gwt.html5.client.download.HTML5Download;
 import com.akjava.gwt.html5.client.file.File;
 import com.akjava.gwt.html5.client.file.FileUploadForm;
@@ -485,7 +486,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 			
 		});
 		volOptions.add(createHorizontalVolCheck);
-		List<Integer> searchWorkersValues=Lists.newArrayList(0,2,4,8,16);
+		List<Integer> searchWorkersValues=Lists.newArrayList(0,2,4,6,8);
 		searchVolWorkerSizeBox = new ToStringValueListBox<Integer>(searchWorkersValues);
 		searchVolWorkerSizeBox.addValueChangeHandler(new ValueChangeHandler<Integer>() {
 
@@ -902,8 +903,8 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 					}
 
 					@Override
-					public int searchPassedImages(boolean isInitial,int needPassedImageSize) {
-						return GWTConvNetJs.this.searchPassedImage(isInitial,needPassedImageSize);
+					public int searchPassedImages(boolean isInitial,int needPassedImageSize,long searched) {
+						return GWTConvNetJs.this.searchPassedImage(isInitial,needPassedImageSize,searched);
 					}
 
 					@Override
@@ -1050,6 +1051,10 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		searchPassedImageWorker.setCancelled(true);
 		searchPassedImageWorkerRunning=false;
 		searchPassedImageWorker=null;
+		
+		//expire
+		usedNegatives.clear();
+		recycledNegatives.clear();
 	}
 
 	private VerticalPanel createRepeatControls() {
@@ -4197,31 +4202,47 @@ private int searchPassedImageWorkerSize;
  * new search passed image action
  */
 
+Stopwatch searchWatch=Stopwatch.createUnstarted();
 //TODO add need image size
-	public int searchPassedImage(boolean isInitial,int needSize){
+	public int searchPassedImage(boolean isInitial,int needSize,long searched){
+		if(searched==0){
+			searchWatch.reset();
+			if(!searchWatch.isRunning()){
+				searchWatch.start();
+			}
+			messageLabel.setText("start-search:"+isInitial+"needSize="+needSize);
+		}
+		
 		
 		//TODO support out of image;
 		if(negativesZip.getDatas().size()==0){
-			Window.alert("empty negative images");
 			doCancelAuto();
+			Window.alert("empty negative images");
 		}
 		
 		//just search don't care doesn't find or faild pass 
-		if(searchPassedImageWorkerSize==0 || useRandomOnCreateVol){//no worker,random image not suite worker
-		CascadeNet cascadeNet=getLastCascade();
-		Optional<Vol> passedVol=getPossiblePassedRandomVol(cascadeNet);
 		
-		for(Vol vol:passedVol.asSet()){
-				if(passedNegativeVolsForTest.size()<negativeTestSize){//make test first
-					//this PassedData no need index,just test and must be not 0
-					passedNegativeVolsForTest.add(new PassedData(vol,lastDataUrl));
+		if(!stageControler.isCanceled()){//possible cancelled
+			if(searchPassedImageWorkerSize==0 || useRandomOnCreateVol){//no worker,random image not suite worker
+				CascadeNet cascadeNet=getLastCascade();
+				Optional<Vol> passedVol=getPossiblePassedRandomVol(cascadeNet);
+				
+				for(Vol vol:passedVol.asSet()){
+						if(passedNegativeVolsForTest.size()<negativeTestSize){//make test first
+							//this PassedData no need index,just test and must be not 0
+							passedNegativeVolsForTest.add(new PassedData(vol,lastDataUrl));
+						}else{
+							recycledNegatives.add(new PassedData(vol,detectNegativeIndex(vol)));
+					}
+				}
 				}else{
-					recycledNegatives.add(new PassedData(vol,detectNegativeIndex(vol)));
-			}
+					if(searched==0){
+						searchPassedImageWithWorker(isInitial,needSize);
+					}
+				}
 		}
-		}else{
-			searchPassedImageWithWorker(isInitial,needSize);
-		}
+		
+		
 		
 		//running worker?
 		
@@ -4229,12 +4250,17 @@ private int searchPassedImageWorkerSize;
 		
 		
 		
-		
+		int numFind=0;
 		if(isInitial){
-		return passedNegativeVolsForTest.size()+usedNegatives.size()+recycledNegatives.size();	
+			numFind =passedNegativeVolsForTest.size()+usedNegatives.size()+recycledNegatives.size();	
 		}else{
-		return recycledNegatives.size();
+			numFind =recycledNegatives.size();
 		}
+		
+		if(searched!=0 && searched%1000==0){
+			messageLabel.setText("search:"+isInitial+",needSize="+needSize+",finished="+numFind+",time="+searchWatch.elapsed(TimeUnit.SECONDS)+"s");
+		}
+		return numFind;
 	}
 	
 
@@ -4253,9 +4279,15 @@ private int searchPassedImageWorkerSize;
 	private synchronized void searchPassedImageWithWorker(final boolean isInitial,final int size) {
 	
 	
-			if(searchPassedImageWorkerRunning){
-			return;//do nothing
+			if(searchPassedImageWorkerRunning || stageControler.isCanceled()){
+				return;//do nothing
 			}
+			
+			if(hasEnoughSearchPassedImage(isInitial,size)){
+				LogUtils.log("no need to running worker");
+				return;
+			}
+			
 			LogUtils.log("searchPassedImageWithWorker-called:"+isInitial+",size:"+size);
 			searchPassedImageWorkerRunning=true;
 		
@@ -4267,11 +4299,15 @@ private int searchPassedImageWorkerSize;
 		
 		final List<CVImageData> negatives=Lists.newArrayList(negativesZip.getDatas());
 		
-		searchPassedImageWorker = new WorkerPool(searchPassedImageWorkerSize,"/detect/worker.js") {
+		searchPassedImageWorker = new WorkerPool(searchPassedImageWorkerSize,"/negative/worker.js") {
 			int extracted;
 			@Override
 			public void extractData(WorkerPoolData data, MessageEvent event) {
+				extracted++;
 				
+				if(extracted==negatives.size()){
+					LogUtils.log("reach end of all images.maybe canceled by auto controler");//TODO throw empty error
+				}
 				
 				String name=data.getParameterString("name");
 				LogUtils.log("searchPassedImageWithWorker-extract:"+name);
@@ -4284,15 +4320,17 @@ private int searchPassedImageWorkerSize;
 				}
 				if(negativeData==null){
 					LogUtils.log("data not found in zip:"+name);
+					negativesZip.getDatas().remove(negativeData);//consumed;
 					return;
 				}
 				Optional<ImageElement> optional=negativesZip.getImageElement(negativeData);
 				if(!optional.isPresent()){
 					LogUtils.log("image not found in zip:"+name);
+					negativesZip.getDatas().remove(negativeData);//consumed;
 					return;
 				}
 				
-				JsArray<HaarRect> rects=Worker2.getDataAsJavaScriptObject(event).cast();
+				JsArray<NegativeResult> rects=Worker2.getDataAsJavaScriptObject(event).cast();
 				LogUtils.log("searchPassedImageWithWorker-extract:"+name+",rects="+rects.length());
 				if(rects.length()==0){
 					negativesZip.getDatas().remove(negativeData);//consumed;
@@ -4302,26 +4340,15 @@ private int searchPassedImageWorkerSize;
 					if(hasEnoughSearchPassedImage(isInitial,size)){
 						return;//if others done
 					}
-					
-					ImageElementUtils.copytoCanvas(optional.get(), sharedCanvas);
-					Canvas grayscale=CanvasUtils.convertToGrayScale(sharedCanvas, null);
-					final ImageData grayScaleImageData=ImageDataUtils.copyFrom(grayscale);
-					
+			
 				for(int i=0;i<rects.length();i++){
-					HaarRect rect=rects.get(i);
-					Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnly(grayScaleImageData,rect.getX(),rect.getY(), rect.getWidth(), rect.getHeight(), GWTConvNetJs.netWidth+GWTConvNetJs.edgeSize,GWTConvNetJs.netHeight+GWTConvNetJs.edgeSize);
+					NegativeResult negative=rects.get(i);
 					
-					
-					int[] binaryPattern=GWTConvNetJs.createLBPDepthFromUint8ArrayPacked(resized, false);
-					
-					Vol vol=GWTConvNetJs.createVolFromIndexes(binaryPattern,GWTConvNetJs.parseMaxLBPValue());
-					addSearchingNegativeVol(vol);
+						addSearchingNegativeVol(negative.getVol());
 					
 					}
-				extracted++;
-				if(extracted==negatives.size()){
-					LogUtils.log("reach end of all images.maybe canceled by auto controler");//TODO throw empty error
-				}
+				
+				
 				
 					negativesZip.getDatas().remove(negativeData);//consumed;
 				
@@ -4380,7 +4407,7 @@ private int searchPassedImageWorkerSize;
 				};
 				poolData.setParameterString("name", data.getFileName());
 				
-				LogUtils.log("searchPassedImageWithWorker-multicaller-called:"+data.getFileName());
+				LogUtils.log("searchPassedImageWithWorker-multicaller-called(alway 1 more called):"+data.getFileName());
 				
 				return poolData;
 			}
@@ -4515,6 +4542,10 @@ private int searchPassedImageWorkerSize;
 	*/
 	
 	public Optional<Vol> createRandomVol(){
+		if(negativesZip.size()==0){
+			LogUtils.log("negativeZip is empty");
+			return Optional.absent();
+		}
 		
 		for(int j=0;j<20;j++){ //just check image exist
 	//		Stopwatch watch1=Stopwatch.createStarted();

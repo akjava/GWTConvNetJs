@@ -61,10 +61,9 @@ public abstract class StageControler {
 			LogUtils.log("start-searching passed images-variation:"+(needPassedImageSize));
 		}
 		
-		searchWatch.reset();searchWatch.start();
 		searched=0;
 	}
-	Stopwatch searchWatch=Stopwatch.createUnstarted();
+	
 	public void start(final LearningInfo learningInfo){
 		checkState(doing==false,"error somehow other thread runnning.");
 		//initialize;
@@ -166,9 +165,9 @@ public abstract class StageControler {
 					
 				}else if(mode==MODE_SEARCH_PASSED_IMAGES){
 					
-					int imageSize=searchPassedImages(initialImageSearch,needPassedImageSize);//just call
+					int imageSize=searchPassedImages(initialImageSearch,needPassedImageSize,searched);//just call
 					if(imageSize>=needPassedImageSize){
-						LogUtils.log("finish-searching passed images:"+imageSize+",time="+searchWatch.elapsed(TimeUnit.SECONDS)+"s");
+						LogUtils.log("finish-searching passed images:");
 						if(initialImageSearch){
 							mode=MODE_INITIAL;
 						}else{
@@ -177,12 +176,6 @@ public abstract class StageControler {
 						
 						}
 					searched++;
-					if(searched%1000==0){//debug
-						sendInfo("continue-searching passed images:"+imageSize+",time="+searchWatch.elapsed(TimeUnit.SECONDS)+"s"+" searched:"+searched);
-						//if(!searchWatch.isRunning()){
-							//searchWatch.start();
-						//}
-					}
 					
 				}
 				
@@ -292,7 +285,7 @@ public abstract class StageControler {
 			}
 		};
 		
-		timer.scheduleRepeating(5);
+		timer.scheduleRepeating(10);
 		
 		
 		
@@ -377,7 +370,7 @@ public abstract class StageControler {
 	public abstract Score doTraining(int positiveRatio, boolean initial);
 	public abstract Score repeating();
 	public abstract String makeJson();
-	public abstract int searchPassedImages(boolean isInitial,int needPassedImageSize);
+	public abstract int searchPassedImages(boolean hasNoVariety,int needPassedImageSize,long searched);
 	
 	public abstract int getPositiveCount();
 	public abstract int getNegativeCount();

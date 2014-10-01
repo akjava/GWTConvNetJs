@@ -951,7 +951,7 @@ var $sessionId = function(){};
 var navigator = {};
 navigator.userAgent = 'timobile';
 $strongName = 'A2F1D50D093EF0968E1FB3BAD7F680BA';
-$ti4jCompilationDate = 1411970541783;
+$ti4jCompilationDate = 1412062826818;
 $wnd.Array = function(){};
 self.addEventListener('message', function(e) {   $workergwtbridge(e.data); }, false);
 gwtOnLoad(null,'detect',null);
