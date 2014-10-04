@@ -64,11 +64,14 @@ import com.akjava.lib.common.utils.ListUtils;
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Optional;
+import com.google.common.base.Predicate;
 import com.google.common.base.Stopwatch;
+import com.google.common.collect.Collections2;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.google.common.primitives.Doubles;
+import com.google.common.primitives.Ints;
 import com.google.gwt.canvas.client.Canvas;
 import com.google.gwt.canvas.dom.client.ImageData;
 import com.google.gwt.core.client.EntryPoint;
@@ -318,6 +321,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 	}
 	
 	public void onModuleLoad() {
+	
 		sharedCanvas = Canvas.createIfSupported();//shared for multiple-task
 		
 		
@@ -1765,9 +1769,9 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 			totalRect+=rects.size();
 			}
 		}
-		//LogUtils.log("generate-time:"+watch.elapsed(TimeUnit.MILLISECONDS));
+		//LogUtils.log();
 
-		return "negative-info:remain "+totalRect+" rects of "+negativesZip.getDatas().size()+" images";
+		return "negative-info:remain "+totalRect+" rects of "+negativesZip.getDatas().size()+" images"+" rect-generate-time:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms";
 	}
 
 	private void loadNegativeZip() {
@@ -2100,11 +2104,26 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 		
 		//minRateBox.setValue(0.5);
 		
+		//expired
+		usedNegatives.clear();
+		recycledNegatives.clear();
+				
+		//test is recycled,i'm not sure really good?
+		passedNegativeVolsForTest=Lists.newArrayList(FluentIterable.from(passedNegativeVolsForTest).filter(new Predicate<PassedData>() {
+			@Override
+			public boolean apply(PassedData data) {
+				return getLastCascade().filter(data.getVol()).isPresent();
+			}
+		}));
+		
+		LogUtils.log("recycled test-negative:"+passedNegativeVolsForTest.size());
 		
 		CascadeNet next=new CascadeNet(cascades.get(cascades.size()-1),createNewNet(),null);
 		cascades.add(next);
 		
-		passedNegativeVolsForTest.clear();//TODO recycle
+		
+		
+		
 		//trainPositiveOnly();
 		droppedList.addAll(temporalyIgnoreList);
 		temporalyIgnoreList.clear();
@@ -2113,9 +2132,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 		
 		LogUtils.log(getNegativeInfo());
 		
-		//expired
-		usedNegatives.clear();
-		recycledNegatives.clear();
+		
 		
 		//for auto
 		if(cascades.size()>=autoRandomOffStage.getValue()){
@@ -4239,7 +4256,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 		}
 		
 		//just search don't care doesn't find or faild pass 
-		
+		boolean useWorker=false;
 		if(!stageControler.isCanceled()){//possible cancelled
 			if(searchPassedImageWorkerSize==0 || useRandomOnCreateVol){//no worker,random image not suite worker
 				CascadeNet cascadeNet=getLastCascade();
@@ -4255,6 +4272,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 					}
 				}
 				}else{
+					useWorker=true;
 					if(searched==0){
 						searchPassedImageWithWorker(isInitial,needSize);
 					}
@@ -4275,10 +4293,20 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 		}else{
 			numFind =recycledNegatives.size();
 		}
-		
+		String option="";
 		if(searched!=0 && searched%1000==0){
-			messageLabel.setText("search:"+isInitial+",needSize="+needSize+",finished="+numFind+",time="+searchWatch.elapsed(TimeUnit.SECONDS)+"s");
+			
+			if(!useWorker){
+				option="searched="+searched;//on non-worker search ,searched is important
+			}//TODO count how many searched on worker
+			messageLabel.setText("search:"+isInitial+",needSize="+needSize+",finished="+numFind+",time="+searchWatch.elapsed(TimeUnit.SECONDS)+"s "+option);
 		}
+		
+		if(hasEnoughSearchPassedImage(isInitial,needSize)){
+			LogUtils.log("search-finished:"+isInitial+",needSize="+needSize+","+",time="+searchWatch.elapsed(TimeUnit.SECONDS)+"s "+option);
+			
+		}
+		
 		return numFind;
 	}
 	
@@ -4329,7 +4357,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 				}
 				
 				String name=data.getParameterString("name");
-				LogUtils.log("searchPassedImageWithWorker-extract:"+name);
+				//LogUtils.log("searchPassedImageWithWorker-extract:"+name);
 				CVImageData negativeData=null;
 				for(CVImageData negative:negativesZip.getDatas()){
 					if(negative.getFileName().equals(name)){
@@ -4350,7 +4378,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 				}
 				
 				JsArray<NegativeResult> rects=Worker2.getDataAsJavaScriptObject(event).cast();
-				LogUtils.log("searchPassedImageWithWorker-extract:"+name+",rects="+rects.length());
+				//LogUtils.log("searchPassedImageWithWorker-extract:"+name+",rects="+rects.length());
 				if(rects.length()==0){
 					negativesZip.getDatas().remove(negativeData);//consumed;
 					return;
@@ -4426,7 +4454,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 				};
 				poolData.setParameterString("name", data.getFileName());
 				
-				LogUtils.log("searchPassedImageWithWorker-multicaller-called(alway 1 more called):"+data.getFileName());
+				//LogUtils.log("searchPassedImageWithWorker-multicaller-called(alway 1 more called):"+data.getFileName());
 				
 				return poolData;
 			}
@@ -4438,9 +4466,8 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 	}
 
 	protected void addSearchingNegativeVol(Vol vol) {
-		List<Double> debug=vol.getWAsList();
-		
-		LogUtils.log("negative-vol:size="+debug.size()+","+Joiner.on(",").join(debug));
+		//List<Double> debug=vol.getWAsList();
+		//LogUtils.log("negative-vol:size="+debug.size()+","+Joiner.on(",").join(debug));
 		
 		if(passedNegativeVolsForTest.size()<negativeTestSize){//make test first
 			//this PassedData no need index,just test and must be not 0
