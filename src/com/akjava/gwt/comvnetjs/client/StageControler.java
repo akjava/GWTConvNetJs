@@ -5,10 +5,18 @@ import static com.google.common.base.Preconditions.checkState;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import com.akjava.gwt.lib.client.ImageElementUtils;
 import com.akjava.gwt.lib.client.LogUtils;
+import com.akjava.gwt.lib.client.experimental.ResizeUtils;
+import com.akjava.gwt.lib.client.experimental.opencv.CVImageData;
+import com.akjava.lib.common.graphics.Rect;
 import com.google.common.base.Optional;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
+import com.google.gwt.canvas.client.Canvas;
+import com.google.gwt.canvas.dom.client.ImageData;
+import com.google.gwt.dom.client.ImageElement;
+import com.google.gwt.typedarrays.client.Uint8ArrayNative;
 import com.google.gwt.user.client.Timer;
 
 public abstract class StageControler {
@@ -76,7 +84,7 @@ public abstract class StageControler {
 		
 		phaseDatas=Lists.newArrayList();
 		
-		
+		variationSize=learningInfo.minVariation;
 		
 		phaseData=new PhaseData(new PhaseInfo(variationSize,ratio,learningInfo.matchRate,learningInfo.falseRate));
 		phaseDatas.add(phaseData);
@@ -125,7 +133,7 @@ public abstract class StageControler {
 					LogUtils.log("initial-training:ratio="+ratio);
 					doTraining(ratio, true);//this trainedScore not have result,because do test search-image first
 					
-					variationSize=0;
+					variationSize=0;//not learningInfo.minVariation,only do step by step
 					learningTime=0;
 					mode=MODE_REPEAT;
 					sendInfo("repeat-learning:");
@@ -134,7 +142,8 @@ public abstract class StageControler {
 					score=repeating();
 					learningTime++;
 					
-					if(learningTime==learningInfo.maxLearning){
+					//skip reapeat lower variation
+					if(learningInfo.minVariation>variationSize || learningTime==learningInfo.maxLearning){
 						
 						boolean initial=false;
 						
@@ -496,8 +505,9 @@ public abstract class StageControler {
 	}
 	
 	
+	
 	public static class LearningInfo{
-		public LearningInfo(int maxStage, double matchRate, double falseRate, double firstMatchRate,double firstFalseRate, int minRatio, int maxRatio, int maxVariation, int maxLearning) {
+		public LearningInfo(int maxStage, double matchRate, double falseRate, double firstMatchRate,double firstFalseRate, int minRatio, int maxRatio, int minVariation,int maxVariation, int maxLearning) {
 			super();
 			this.maxStage = maxStage;
 			this.matchRate = matchRate;
@@ -506,9 +516,11 @@ public abstract class StageControler {
 			this.firstFalseRate = firstFalseRate;
 			this.minRatio = minRatio;
 			this.maxRatio = maxRatio;
+			this.minVariation=minVariation;
 			this.maxVariation = maxVariation;
 			this.maxLearning = maxLearning;
 		}
+		private int minVariation;
 		private int maxStage;
 		private double firstMatchRate;
 		private double matchRate;
@@ -520,4 +532,6 @@ public abstract class StageControler {
 		private int maxVariation;
 		private int maxLearning;
 	}
+	
+	
 }

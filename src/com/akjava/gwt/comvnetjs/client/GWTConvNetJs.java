@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
+import com.akjava.gwt.comvnetjs.client.NegativeControler.HasDetectSize;
 import com.akjava.gwt.comvnetjs.client.StageControler.LearningInfo;
 import com.akjava.gwt.comvnetjs.client.StageControler.PhaseData;
 import com.akjava.gwt.comvnetjs.client.StageControler.Score;
@@ -20,7 +21,6 @@ import com.akjava.gwt.comvnetjs.client.worker.DetectParam;
 import com.akjava.gwt.comvnetjs.client.worker.DetectParam1;
 import com.akjava.gwt.comvnetjs.client.worker.DetectParam2;
 import com.akjava.gwt.comvnetjs.client.worker.HaarRect;
-import com.akjava.gwt.comvnetjs.client.worker.MakeRectParam;
 import com.akjava.gwt.comvnetjs.client.worker.NegativeResult;
 import com.akjava.gwt.html5.client.download.HTML5Download;
 import com.akjava.gwt.html5.client.file.File;
@@ -54,7 +54,6 @@ import com.akjava.gwt.lib.client.widget.cell.SimpleCellTable;
 import com.akjava.gwt.webworker.client.Worker2;
 import com.akjava.gwt.webworker.client.WorkerPool;
 import com.akjava.gwt.webworker.client.WorkerPool.HashedParameterData;
-import com.akjava.gwt.webworker.client.WorkerPool.Uint8WorkerPoolData;
 import com.akjava.gwt.webworker.client.WorkerPool.WorkerPoolData;
 import com.akjava.gwt.webworker.client.WorkerPoolMultiCaller;
 import com.akjava.lib.common.graphics.Rect;
@@ -66,12 +65,10 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Optional;
 import com.google.common.base.Predicate;
 import com.google.common.base.Stopwatch;
-import com.google.common.collect.Collections2;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.google.common.primitives.Doubles;
-import com.google.common.primitives.Ints;
 import com.google.gwt.canvas.client.Canvas;
 import com.google.gwt.canvas.dom.client.ImageData;
 import com.google.gwt.core.client.EntryPoint;
@@ -127,7 +124,7 @@ import com.google.gwt.webworker.client.MessageEvent;
 /**
  * Entry point classes define <code>onModuleLoad()</code>.
  */
-public class GWTConvNetJs implements EntryPoint {
+public class GWTConvNetJs implements EntryPoint , HasDetectSize {
 	//private List<CVImageeData> positiveDatas;
 	//private List<CVImageeData> positiveImagesData;//posimages.zip (clipped)
 	private JSZip loadedZip;
@@ -151,7 +148,7 @@ public class GWTConvNetJs implements EntryPoint {
 	
 	private List<CascadeNet> cascades=Lists.newArrayList();
 	
-	private CVImageZip negativesZip;
+	
 	private CVImageZip positivesZip;
 	final int classNumber=2;
 	
@@ -177,6 +174,8 @@ public class GWTConvNetJs implements EntryPoint {
 	private CheckBox use90AngleCheck;
 
 	private CheckBox createHorizontalVolCheck;
+
+	private NegativeControler negativeControler;
 	public class LBPImageZip extends CVImageZip{
 		private ByteImageDataIntConverter converter=new ByteImageDataIntConverter(lbpCanvas.getContext2d(),true);
 	
@@ -259,23 +258,23 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 				
 				hpanel.add(new Label("Detect-canvas"));
 				hpanel.add(new Label("detect-width:"));
-				detectWidth = new IntegerBox();
-				detectWidth.setValue(32);
-				detectWidth.setWidth("50px");
-				hpanel.add(detectWidth);
+				detectWidthBox = new IntegerBox();
+				detectWidthBox.setValue(32);
+				detectWidthBox.setWidth("50px");
+				hpanel.add(detectWidthBox);
 				
 				hpanel.add(new Label("detect-height:"));
-				detectHeight = new IntegerBox();
-				detectHeight.setValue(32);
-				detectHeight.setWidth("50px");
-				hpanel.add(detectHeight);
+				detectHeightBox = new IntegerBox();
+				detectHeightBox.setValue(32);
+				detectHeightBox.setWidth("50px");
+				hpanel.add(detectHeightBox);
 				
 				Button resetDetectSizeBt=new Button("Reset",new ClickHandler() {
 					
 					@Override
 					public void onClick(ClickEvent event) {
-						detectWidth.setValue(positiveSize.x);
-						detectHeight.setValue(positiveSize.y);
+						detectWidthBox.setValue(positiveSize.x);
+						detectHeightBox.setValue(positiveSize.y);
 					}
 				});
 				hpanel.add(resetDetectSizeBt);
@@ -466,16 +465,17 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		mainPanel.add(volOptions);
 		
 		createRandomVolCheck = new CheckBox("use random image");
-		createRandomVolCheck.setValue(true);
+		
 		createRandomVolCheck.addValueChangeHandler(new ValueChangeHandler<Boolean>() {
 
 			@Override
 			public void onValueChange(ValueChangeEvent<Boolean> event) {
 				
-				useRandomOnCreateVol=event.getValue();
+				negativeControler.setUseRandomNegative(event.getValue());
 			}
 			
 		});
+		createRandomVolCheck.setValue(true,true);
 		volOptions.add(createRandomVolCheck);
 		
 		createHorizontalVolCheck = new CheckBox("use horizontal");
@@ -485,7 +485,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 			@Override
 			public void onValueChange(ValueChangeEvent<Boolean> event) {
 				
-				useHorizontalFlip=event.getValue();
+				negativeControler.setUseHorizontalFlip(event.getValue());
 			}
 			
 		});
@@ -519,6 +519,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		loadPositiveZip();
 		//loadNegativeZip();
 		
+		negativeControler=new NegativeControler(this);
 		
 		
 		FileUploadForm negativeUpload=FileUtils.createSingleFileUploadForm(new DataArrayListener() {
@@ -526,61 +527,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 			@Override
 			public void uploaded(File file, Uint8Array array) {
 				negativeZipLabel.setText(file.getFileName());
-				final Stopwatch watch=Stopwatch.createStarted();
-				
-				negativesZip=new CVImageZip(array);
-				negativesZip.setUseCache(true);
-				negativesZip.setName(file.getFileName());
-				negativesZip.shuffle();//negative file need shuffle?
-				checkState(negativesZip.size()>0,"some how empty zip or index/bg");
-				
-				LogUtils.log("pre-extract-time:"+watch.elapsed(TimeUnit.SECONDS)+"s");
-				watch.reset();watch.start();
-				final List<CVImageData> datas=Lists.newArrayList(negativesZip.getDatas());
-				
-				
-				WorkerPool workerPool=new WorkerPool(24,"/workers/uint8tobase64.js") {
-					int extracted;
-					@Override
-					public void extractData(WorkerPoolData data, MessageEvent event) {
-						String base64=event.getDataAsString();
-						extracted++;
-						
-						
-						
-						for(FileType type:FileType.getFileTypeFromFileName(data.getParameterString("name")).asSet()){
-							String dataUrl=Base64Utils.toDataUrl(type.getMimeType(),base64);
-							negativesZip.putCache(data.getParameterString("name"), dataUrl);
-							
-							//how to catch all data extracted.
-							if(extracted==negativesZip.getDatas().size()){
-								//createNegativeRectangles();//this way slow,but less freeze time
-								LogUtils.log(getNegativeInfo());
-								LogUtils.log("load negatives-image-only from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
-							}
-							
-							return;
-						}
-						
-						LogUtils.log("invalid name for convert base64 imagee:"+data.getParameterString("name"));
-						
-					}
-				};
-				
-				WorkerPoolMultiCaller<CVImageData> multiCaller=new WorkerPoolMultiCaller<CVImageData>(workerPool,datas) {
-
-					@Override
-					public WorkerPoolData convertToData(CVImageData data) {
-						JSFile file=negativesZip.getZip().getFile(data.getFileName());
-						Uint8Array array=file.asUint8Array();
-						Uint8WorkerPoolData poolData= new Uint8WorkerPoolData(array.convertToNative(),false);
-						poolData.setParameterString("name", data.getFileName());
-						return poolData;
-					}
-					
-				};
-				multiCaller.start(10);
-				
+				negativeControler.uploaded(file,array,detectWidthBox.getValue(),detectHeightBox.getValue());
 			}
 		});
 		HorizontalPanel negativePanel=new HorizontalPanel();
@@ -601,6 +548,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		testCanvas = CanvasUtils.createCanvas(200, 200);;
 		mainPanel.add(testCanvas);
 	}
+
 	
 	 interface Driver extends SimpleBeanEditorDriver< StageResult,  StageResultEditor> {}
 	 Driver stageResultEditorDriver = GWT.create(Driver.class);
@@ -784,6 +732,15 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		maxLearningBox.setWidth("80px");
 		firstPanel.add(maxLearningBox);
 		
+		//cant control initial-variation only step by step support
+		
+		firstPanel.add(new Label("initialVariation:"));
+		final IntegerBox minVariationBox=new IntegerBox();
+		minVariationBox.setValue(0);//normal,1 skip initial repeat
+		minVariationBox.setWidth("40px");
+		firstPanel.add(minVariationBox);
+		
+		
 		HorizontalPanel secondPanel=new HorizontalPanel();
 		secondPanel.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
 		panel.add(secondPanel);
@@ -939,7 +896,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 				double startMatch=useFirstSpecialValue.getValue()?firstMatchRateBox.getValue():matchRateBox.getValue();
 				double startFalse=useFirstSpecialValue.getValue()?firstFalseRateBox.getValue():falseRateBox.getValue();
 				stageControler.start(new LearningInfo(maxStageBox.getValue(), matchRateBox.getValue(), falseRateBox.getValue(),startMatch, startFalse, 
-						minPositiveBox.getValue(), maxPositiveBox.getValue(), 6, maxLearningBox.getValue()));
+						minPositiveBox.getValue(), maxPositiveBox.getValue(),minVariationBox.getValue(), 6, maxLearningBox.getValue()));
 				
 			}
 		};
@@ -1394,14 +1351,14 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		Stopwatch test1Watch=Stopwatch.createStarted();//share 1 worker pool
 		for(int i=0;i<1000;i++){
 			
-			Optional<Vol> optional=createRandomVol();
+			Optional<Vol> optional=negativeControler.createRandomVol();
 			for(Vol vol:optional.asSet()){
 				//
 				if(passAll(nets,vol)!=-1){
 					passed++;
 				}
 				//dtime2+=watch2.elapsed(TimeUnit.MILLISECONDS);
-				if(useHorizontalFlip){
+				if(negativeControler.isUseHorizontalFlip()){
 					Vol converted=convertToHorizontalVol(vol);
 					if(passAll(nets,converted)!=-1){
 						horizontal++;
@@ -1463,229 +1420,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		panel.add(test1Bt);
 		
 		
-		ExecuteButton execute=new ExecuteButton("Test1",false) {
-			Stopwatch test1Watch=Stopwatch.createStarted();//share 1 worker pool
-			@Override
-			public void executeOnClick() {
-				test1Watch.reset();test1Watch.start();
-				ImageElement image=negativesZip.getImageElement(negativesZip.get(0)).get();
-				final Canvas canvas=CanvasUtils.createCanvas(image);
-				final ImageData imageData=ImageDataUtils.copyFrom(canvas);
-				final int w=imageData.getWidth()/2;
-				final int h=imageData.getHeight()/2;
-				
-				
-				
-				final int totalSize=1;
-				String option="?"+System.currentTimeMillis();//TODO default
-				
-				
-				if(testWorkerPool==null){
-					testWorkerPool=new WorkerPool(totalSize,"/workers/cropgrayscale.js"+option) {
-					int extracted;
-					@Override
-					public void doInitialize(){
-						extracted=0;
-					}
-					@Override
-					public void extractData(WorkerPoolData data, MessageEvent event) {
-						JsArray<Uint8ArrayNative> arrays=Worker2.getDataAsJavaScriptObject(event).cast();
-						
-						extracted++;
-						
-						
-						
-						if(extracted==totalSize){
-							LogUtils.log("crop-time="+test1Watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
-							 
-								for(int i=0;i<arrays.length();i++){
-								ImageData imageData=ImageDataUtils.createNoCopyWith(canvas,w, h);
-								ImageDataUtils.setGrayscale(imageData, arrays.get(i), true);
-								CanvasUtils.copyTo(imageData, canvas);
-								
-								mainPanel.add(new Image(canvas.toDataUrl()));
-								}
-							}
-						setEnabled(true);//button
-					}
-				};
-				}else{
-					testWorkerPool.doInitialize();
-				}
-				
-				JsArray<HaarRect> rects=JsArray.createArray().cast();
-				for(int x=0;x<2;x++){
-					for(int y=0;y<2;y++){
-						HaarRect rect=HaarRect.create(x*w, y*h, w, h);
-						rects.push(rect);
-					}
-				}
-				
-				List<JsArray<HaarRect>> rectsList=Lists.newArrayList();
-				rectsList.add(rects);
-				
-				WorkerPoolMultiCaller<JsArray<HaarRect>> multiCaller=new WorkerPoolMultiCaller<JsArray<HaarRect>>(testWorkerPool,rectsList) {
-					
-					@Override
-					public WorkerPoolData convertToData(JsArray<HaarRect> rects) {
-						
-						final CropRectParam param=CropRectParam.create(imageData,rects);
-						
-						WorkerPoolData poolData=new WorkerPoolData(){
-
-							//maybe no need
-							@Override
-							public String getParameterString(String key) {
-								// TODO Auto-generated method stub
-								return null;
-							}
-
-							@Override
-							public void postData(Worker2 worker) {
-								
-								worker.postMessage(param);
-							}
-						};
-						
-						return poolData;
-					}
-					
-				};
-				multiCaller.start(10);
-				
-				
-				
-				/*
-				Stopwatch watch=Stopwatch.createStarted();
-				List<Rect> rects=RectGenerator.generateRect(2000,2000, 4, 1.4,24,14,1.2);
-				LogUtils.log("rect-size:"+rects.size());
-				LogUtils.log("rect-time:"+watch.elapsed(TimeUnit.MILLISECONDS));
-				for(Rect rect:rects){
-					RectCanvasUtils.stroke(rect, testCanvas, "#000");
-				}*/
-				
-//				Canvas canvas=
-				
-				//calcurate generation vol-time
-				/*
-				final Stopwatch watch=Stopwatch.createStarted();
-				Timer timer=new Timer(){
-					int total=0;
-					int max=10;
-					@Override
-					public void run() {
-						Optional<Vol> optional=createRandomVol(getLastCascade());
-						if(optional.isPresent()){
-							total++;
-							LogUtils.log("negatives:"+negativeCreated);
-						}
-						
-						if(total==max){
-							cancel();
-							LogUtils.log("find-time:"+watch.elapsed(TimeUnit.SECONDS)+","+negativeCreated);
-							setEnabled(true);
-							negativeCreated=0;
-						}
-					}};
-				timer.scheduleRepeating(20);
-				*/
-			}
-		};
 		
-		//panel.add(execute);
-		
-		Button test1Cancel=new Button("Test1 Cancel",new ClickHandler() {
-			
-			@Override
-			public void onClick(ClickEvent event) {
-				stageControler.setCanceled(true);
-				stageResultObjects.update();//for manual update
-			}
-		});
-		//panel.add(test1Cancel);
-		
-		Button test2=new Button("Test2",new ClickHandler() {
-			Net testNet=ConvnetJs.createRawDepathNet(1, 1, 2, 4, 2);
-			
-			Trainer testTrainer=ConvnetJs.createTrainer(testNet, 1);
-			int trained=0;
-			List<Vol> pos=Lists.newArrayList();
-			List<Vol> neg=Lists.newArrayList();
-			@Override
-			public void onClick(ClickEvent event) {
-				int max=100;
-				if(pos.isEmpty()){
-				
-				for(int i=0;i<max;i++){
-					int x=getRandom(0, 10);
-					int y=getRandom(0, 10);
-					
-					Vol v=ConvnetJs.createVol(1, 1, 2, 0);
-					v.set(0, 0, new int[]{x,y});
-					
-					//Stats s=testTrainer.train(v, 0);
-					//LogUtils.log(s);
-					pos.add(v);
-				}
-				}else{
-					for(Vol v:pos){
-						testTrainer.train(v, 0);
-					}
-				}
-				if(neg.isEmpty()){
-				for(int i=0;i<max;i++){
-					int x=getRandom(100, 200);
-					int y=getRandom(100, 200);
-					
-					Vol v=ConvnetJs.createVol(1, 1, 2, 0);
-					v.set(0, 0, new int[]{x,y});
-					
-					Stats s=testTrainer.train(v, 1);
-					//LogUtils.log(s);
-					neg.add(v);
-				}
-				}else{
-					for(Vol v:neg){
-						testTrainer.train(v, 1);
-					}
-				}
-				
-				trained+=max*2;
-				
-				int fine=0;
-				for(int i=0;i<10;i++){
-					for(int j=0;j<10;j++){
-					int x=getRandom(0, 10);
-					int y=getRandom(0, 10);
-					
-					
-					Vol randomVol=ConvnetJs.createVol(1, 1, 2, 0);
-					
-					randomVol.set(0, 0, new double[]{i,j});
-					//LogUtils.log(randomVol);
-					
-					//Vol randomVol=testb(new double[]{x,y});
-					
-					//LogUtils.log(randomVol.get(0,0,0)+","+randomVol.get(0,0,1));
-					Vol r=testNet.forward(randomVol);
-					//LogUtils.log(randomVol);
-					//LogUtils.log(randomVol);
-					String status="";
-					if(r.getW(0)>r.getW(1)){
-						status="fine";
-						fine++;
-					}else{
-						status="ng";
-					}
-					//LogUtils.log(status+","+i+":"+r.getW(0)+","+r.getW(1));
-				}
-				}
-				LogUtils.log("fine:"+fine+",trained="+trained);
-				//LogUtils.log(testb(new double[]{0.1,0.2}));
-				
-			}
-		});
-		//panel.add(test2);
 		return panel;
 	}
 
@@ -1755,190 +1490,9 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		
 	}
 	
-	public String getNegativeInfo(){
-		Stopwatch watch=Stopwatch.createUnstarted();
-		int totalRect=0;
-		if(negativesZip==null){
-			return "";//possible call before negative zip loaded;
-		}
-		for(CVImageData data:negativesZip.getDatas()){
-			for(ImageElement image:negativesZip.getImageElement(data).asSet()){
-				watch.start();
-			List<Rect> rects=loadRect(image, data.getFileName());
-			watch.stop();
-			totalRect+=rects.size();
-			}
-		}
-		//LogUtils.log();
 
-		return "negative-info:remain "+totalRect+" rects of "+negativesZip.getDatas().size()+" images"+" rect-generate-time:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms";
-	}
 
-	private void loadNegativeZip() {
-		final String negativeImageName="neg_eye_paint_face.zip";//bg2 is face up
-		//final String negativeImageName="neg_eye_clip.zip";//bg2 is face up
-//final String negativeImageName="bg2.zip";//bg2 is face up
-//final String negativeImageName="clipbg.zip";//"nose-inpainted-faces.zip"
-BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	
-	
-
-
-
-
-	@Override
-	public void onLoadBinaryFile(ArrayBuffer buffer) {
-		
-		final Stopwatch watch=Stopwatch.createStarted();
-	
-		negativesZip=new CVImageZip(buffer);
-		negativesZip.setUseCache(true);
-		negativesZip.setName(negativeImageName);
-		negativesZip.shuffle();//negative file need shuffle?
-		checkState(negativesZip.size()>0,"some how empty zip or index/bg");
-		
-		LogUtils.log("pre-extract-time:"+watch.elapsed(TimeUnit.SECONDS)+"s");
-		watch.reset();watch.start();
-		final List<CVImageData> datas=Lists.newArrayList(negativesZip.getDatas());
-		
-		
-		WorkerPool workerPool=new WorkerPool(24,"/workers/uint8tobase64.js") {
-			int extracted;
-			@Override
-			public void extractData(WorkerPoolData data, MessageEvent event) {
-				String base64=event.getDataAsString();
-				extracted++;
-				
-				
-				
-				for(FileType type:FileType.getFileTypeFromFileName(data.getParameterString("name")).asSet()){
-					String dataUrl=Base64Utils.toDataUrl(type.getMimeType(),base64);
-					negativesZip.putCache(data.getParameterString("name"), dataUrl);
-					
-					//how to catch all data extracted.
-					if(extracted==negativesZip.getDatas().size()){
-						//createNegativeRectangles();//this way slow,but less freeze time
-						LogUtils.log(getNegativeInfo());
-						LogUtils.log("load negatives-image-only from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
-					}
-					
-					return;
-				}
-				
-				LogUtils.log("invalid name for convert base64 imagee:"+data.getParameterString("name"));
-				
-			}
-		};
-		
-		WorkerPoolMultiCaller<CVImageData> multiCaller=new WorkerPoolMultiCaller<CVImageData>(workerPool,datas) {
-
-			@Override
-			public WorkerPoolData convertToData(CVImageData data) {
-				JSFile file=negativesZip.getZip().getFile(data.getFileName());
-				Uint8Array array=file.asUint8Array();
-				Uint8WorkerPoolData poolData= new Uint8WorkerPoolData(array.convertToNative(),false);
-				poolData.setParameterString("name", data.getFileName());
-				return poolData;
-			}
-			
-		};
-		multiCaller.start(10);
-		
-		/*
-		AsyncMultiCaller<CVImageData> preloader=new AsyncMultiCaller<CVImageData>(datas) {
-
-			@Override
-			public void doFinally(boolean cancelled) {
-				LogUtils.log(getNegativeInfo());
-				
-				LogUtils.log("load negatives from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
-				
-			}
-
-			@Override
-			public void execAsync(CVImageData data) {
-				negativesZip.getImageElement(data);
-				done(data,true);
-			}
-		};
-		preloader.startCall(1);
-		*/
-		
-	}
-	
-	@Override
-	public void onFaild(int states, String statesText) {
-		LogUtils.log(states+","+statesText);
-	}
-});
-		
-	}
-	
-	//some how this is slow
-	private void createNegativeRectangles(){
-		final Stopwatch watch=Stopwatch.createStarted();
-		WorkerPool workerPool=new WorkerPool(4,"/makerect/worker.js") {
-			int extracted;
-			@Override
-			public void extractData(WorkerPoolData data, MessageEvent event) {
-				MakeRectResult result=Worker2.getDataAsJavaScriptObject(event).cast();
-				extracted++;
-				
-				List<Rect> rects=Lists.newArrayList();
-				for(int i=0;i<result.getRects().length();i++){
-					Rect rect=Rect.fromString(result.getRects().get(i));
-					rects.add(rect);
-				}
-				
-				
-				rectsMap.put(result.getName(), ListUtils.shuffle(rects));
-				
-				if(extracted==negativesZip.getDatas().size()){
-					LogUtils.log(getNegativeInfo());
-					LogUtils.log("preload rectangles "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
-				}
-				
-				
-			}
-		};
-		
-		final List<CVImageData> datas=Lists.newArrayList(negativesZip.getDatas());
-		
-		final int minW=detectWidth.getValue();
-		final int minH=detectHeight.getValue();
-		final double min_scale=1.2;//no need really small pixel
-		
-		WorkerPoolMultiCaller<CVImageData> multiCaller=new WorkerPoolMultiCaller<CVImageData>(workerPool,datas) {
-
-			@Override
-			public WorkerPoolData convertToData(final CVImageData data) {
-				Optional<ImageElement> optional=negativesZip.getImageElement(data);
-				for(final ImageElement image:optional.asSet()){
-					WorkerPoolData wdata=new WorkerPoolData(){
-
-						@Override
-						public String getParameterString(String key) {
-							// TODO Auto-generated method stub
-							return null;
-						}
-
-						@Override
-						public void postData(Worker2 worker) {
-							worker.postMessage(MakeRectParam.create(data.getFileName(), image.getWidth(), image.getHeight(), 4, 1.4,minW,minH,min_scale));
-						}
-						
-					};
-					return wdata;
-				}
-				//never happen todo support something
-				return null;
-			}
-			
-		};
-		multiCaller.start(1);
-		
-	
-	}
 	public static class MakeRectResult extends JavaScriptObject{
 		protected MakeRectResult(){
 			
@@ -2025,8 +1579,8 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 				}
 				
 				positiveSize=new PointXY(w, h);
-				detectWidth.setValue(w);
-				detectHeight.setValue(h);
+				detectWidthBox.setValue(w);
+				detectHeightBox.setValue(h);
 				
 				LogUtils.log("Ratio:average="+average+",middle="+middle);
 				
@@ -2130,7 +1684,7 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 		
 		updateCascadeLabel();
 		
-		LogUtils.log(getNegativeInfo());
+		LogUtils.log(negativeControler.getNegativeInfo());
 		
 		
 		
@@ -2347,7 +1901,7 @@ charged searchpassedImage
 					}else{
 					
 				//	LogUtils.log(trained+","+rate);
-					Optional<Vol> optional=createPassedRandomVol(getLastCascade());
+					Optional<Vol> optional=negativeControler.createPassedRandomVol(getLastCascade());
 					if(!optional.isPresent()){
 						Window.alert("creating random vol faild maybe image problems");
 						return;
@@ -2390,7 +1944,7 @@ charged searchpassedImage
 				
 			}
 		}
-		LogUtils.log("trained-positive:"+trained+ " negative="+negative+" ignored="+ignored+" time="+watch.elapsed(TimeUnit.SECONDS)+"s"+" remain-negative-images:"+negativesZip.getDatas().size());
+		LogUtils.log("trained-positive:"+trained+ " negative="+negative+" ignored="+ignored+" time="+watch.elapsed(TimeUnit.SECONDS)+"s"+" remain-negative-images:"+negativeControler.size());
 	}
 
 	
@@ -2589,7 +2143,7 @@ charged searchpassedImage
 		//objects.add("\"minrates\":["+joiner.join(fvalues)+"]");
 		
 		//TODO check is value valid
-		objects.add("\"size\":\""+detectWidth.getValue()+"x"+detectHeight.getValue()+"\"");
+		objects.add("\"size\":\""+detectWidthBox.getValue()+"x"+detectHeightBox.getValue()+"\"");
 		
 		objects.add("\"cascadeconvnetFormat\":"+1.0);//
 		
@@ -3302,8 +2856,8 @@ charged searchpassedImage
 		detectStopwatch=Stopwatch.createStarted();
 		successPosPanel.clear();
 		
-		int minW=detectWidth.getValue();
-		int minH=detectHeight.getValue();
+		int minW=detectWidthBox.getValue();
+		int minH=detectHeightBox.getValue();
 		double min_scale=detectInitialScale.getValue();
 		
 		checkState(minW>0 && minH>0,"invaid detect-size:"+minW+"x"+minH);
@@ -3332,8 +2886,8 @@ charged searchpassedImage
 		}
 		mutchRect.clear();
 		successPosPanel.clear();
-		int minW=detectWidth.getValue();
-		int minH=detectHeight.getValue();
+		int minW=detectWidthBox.getValue();
+		int minH=detectHeightBox.getValue();
 		
 		checkState(minW>0 && minH>0,"invaid detect-size:"+minW+"x"+minH);
 		
@@ -3507,12 +3061,17 @@ charged searchpassedImage
 
 	
 	
-	public int getRandom(int min,int max){
+	private int getRandom(int min,int max){
 		return (int) (min+(Math.random()*(max-min)));
 	}
 	
 
 	int negativeCreated;
+	/**
+	 * maybe 
+	 * @deprecateds
+	 * @param cascadeNet
+	 */
 	private void trainBoth(CascadeNet cascadeNet){
 		trainedPositiveDatas.clear();
 		negativeCreated=0;
@@ -3543,7 +3102,7 @@ charged searchpassedImage
 			trainedPositiveDatas.add(new PassedData(vol, pdata.getFileName()+"#"+rect.toKanmaString().replace(",", "-")));
 			//LogUtils.log("trained-positive:"+trained);
 			
-			Optional<Vol> neg= createPassedRandomVol(cascadeNet);//finding data is really take time
+			Optional<Vol> neg= negativeControler.createPassedRandomVol(cascadeNet);//finding data is really take time
 			if(!neg.isPresent()){
 				Window.alert("faild training");
 				return;
@@ -3564,51 +3123,7 @@ charged searchpassedImage
 	trainSecond=true;
 	}
 	
-	public Optional<Vol> createPassedRandomVol(CascadeNet cascadeNet){
-		
-		Vol passedParentFilter=null;
-		
-		//int maxError=10000000;
-		//int error=0;
-		
-		while(passedParentFilter==null){
-			Optional<Vol> optional2=createRandomVol();
-			if(!optional2.isPresent()){//usually never faild creating randon vol
-				return Optional.absent();
-			}
-			Vol vol=optional2.get();
-		negativeCreated++;
-		//LogUtils.log(vol);
-		
-		Optional<Vol> optional=cascadeNet.filterParents(vol);
-		if(optional.isPresent()){
-			passedParentFilter=optional.get();
-			}
-		else{
-			if(useHorizontalFlip){
-				Vol converted=convertToHorizontalVol(vol);
-				Optional<Vol> horizontalPassed=cascadeNet.filterParents(converted);
-				if(horizontalPassed.isPresent()){
-					passedParentFilter=horizontalPassed.get();
-				}
-			}
-		}
-		if(negativesZip.getDatas().size()==0){
-			Window.alert("No more Negative Images return null");
-			break;
-		}
-		/*
-		 * stop using max limi,because 
-		error++;
-		if(error>maxError){
-			Window.alert("critical error-not found image");
-			break;
-		}
-		*/
-		
-		}
-		return Optional.of(passedParentFilter);
-	}
+
 	
 	private void startTraining(int trained,CascadeNet cascadeNet){
 		LogUtils.log("start-training");
@@ -3753,7 +3268,7 @@ charged searchpassedImage
 		
 		int negatives=0;
 		while(negatives<trained){
-			Optional<Vol> neg=createPassedRandomVol(getLastCascade());
+			Optional<Vol> neg=negativeControler.createPassedRandomVol(getLastCascade());
 			if(!neg.isPresent()){
 				Window.alert("somethin happend on creating random data");
 			}
@@ -4156,7 +3671,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			stopWatch.stop();
 			Stopwatch stopWatch2=Stopwatch.createStarted();
 			for(int i=0;i<testNumber;i++){
-				Optional<Vol> optionalR=createPassedRandomVol(cascade);
+				Optional<Vol> optionalR=negativeControler.createPassedRandomVol(cascade);
 				if(!optionalR.isPresent()){
 					Window.alert("invalid test data");
 					throw new RuntimeException("invalid data");
@@ -4204,31 +3719,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 
 
 
-/**
- * do single action
- * @param cascadeNet
- * @return
- */
-public Optional<Vol> getPossiblePassedRandomVol(CascadeNet cascadeNet){
-	Optional<Vol> randomVol=createRandomVol();//random or orderd
-	for(Vol vol:randomVol.asSet()){
-		Optional<Vol> optional=cascadeNet.filterParents(vol);
-		if(optional.isPresent()){
-			return optional;
-		}else{
-			if(useHorizontalFlip){
-				Vol flipped=convertToHorizontalVol(vol);
-				Optional<Vol> flippedOptional=cascadeNet.filterParents(flipped);
-				if(flippedOptional.isPresent()){
-					//LogUtils.log("flipped-find");
-					return flippedOptional;
-				}
-			}
-			//TODO support truning
-		}
-	}
-	return Optional.absent();
-}
+
 
 public int negativeTestSize=100;
 
@@ -4250,7 +3741,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 		
 		
 		//TODO support out of image;
-		if(negativesZip.getDatas().size()==0){
+		if(negativeControler.size()==0){
 			doCancelAuto();
 			Window.alert("empty negative images");
 		}
@@ -4258,9 +3749,9 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 		//just search don't care doesn't find or faild pass 
 		boolean useWorker=false;
 		if(!stageControler.isCanceled()){//possible cancelled
-			if(searchPassedImageWorkerSize==0 || useRandomOnCreateVol){//no worker,random image not suite worker
+			if(searchPassedImageWorkerSize==0 || negativeControler.isUseRandomNegative()){//no worker,random image not suite worker
 				CascadeNet cascadeNet=getLastCascade();
-				Optional<Vol> passedVol=getPossiblePassedRandomVol(cascadeNet);
+				Optional<Vol> passedVol=negativeControler.getPossiblePassedRandomVol(cascadeNet);//only one step
 				
 				for(Vol vol:passedVol.asSet()){
 						if(passedNegativeVolsForTest.size()<negativeTestSize){//make test first
@@ -4325,6 +3816,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 		//this method called every 1-10 ms
 	private synchronized void searchPassedImageWithWorker(final boolean isInitial,final int size) {
 	
+		
 	
 			if(searchPassedImageWorkerRunning || stageControler.isCanceled()){
 				return;//do nothing
@@ -4338,6 +3830,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 			LogUtils.log("searchPassedImageWithWorker-called:"+isInitial+",size:"+size);
 			searchPassedImageWorkerRunning=true;
 		
+			final CVImageZip negativesZip=negativeControler.getNegativesZip();
 		
 		List<CascadeNet> parents=Lists.newArrayList(cascades);
 		parents.remove(parents.size()-1);//
@@ -4412,7 +3905,8 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 		
 		
 		
-		
+		final int minW=detectWidthBox.getValue();
+		final int minH=detectHeightBox.getValue();
 				
 		WorkerPoolMultiCaller<CVImageData> multiCaller=new WorkerPoolMultiCaller<CVImageData>(searchPassedImageWorker,negatives) {
 			
@@ -4429,7 +3923,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 				Canvas grayscale=CanvasUtils.convertToGrayScale(sharedCanvas, null);
 				final ImageData grayScaleImageData=ImageDataUtils.copyFrom(grayscale);
 				
-				List<Rect> rects=loadRect(element.get(), data.getFileName());
+				List<Rect> rects=negativeControler.loadRect(element.get(), data.getFileName(),minW,minH);
 				
 				//convert to rects TODO method? #HaarRect.from(List<Rect)
 				JsArray<HaarRect> rectArray= JsArray.createArray().cast();
@@ -4439,7 +3933,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 				}
 				
 				final DetectParam param=DetectParam.create(json, grayScaleImageData, rectArray);
-				param.setUseHorizontalFlip(useHorizontalFlip);
+				param.setUseHorizontalFlip(negativeControler.isUseHorizontalFlip());
 				param.setImageData(grayScaleImageData);
 				param.setJson(json);
 				
@@ -4464,6 +3958,8 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 		
 		multiCaller.start(10);
 	}
+	
+
 
 	protected void addSearchingNegativeVol(Vol vol) {
 		//List<Double> debug=vol.getWAsList();
@@ -4535,7 +4031,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 		}
 		
 		for(int i=0;i<testNumber;i++){
-			Optional<Vol> optional=createRandomVol();
+			Optional<Vol> optional=negativeControler.createRandomVol();
 			if(!optional.isPresent()){
 				Window.alert("create random vol faild maybe image problems");
 				return;
@@ -4576,13 +4072,12 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 	
 	private Map<String,ImageElement> imageElementMap=new HashMap<String, ImageElement>();
 	
-	private Map<String,List<Rect>> rectsMap=new HashMap<String, List<Rect>>();
+
 	
-	private boolean useRandomOnCreateVol=true;//on first stage it's better use random
-	private boolean useHorizontalFlip=false;//on first stage it's better use random
+	//private boolean useRandomOnCreateVol=true;//on first stage it's better use random
+	
 	//private ImageElement lastImageElement;
-	private ImageData lastImageData;
-	private CVImageData lastData;
+
 	
 	/*
 	long dtime=0;
@@ -4592,72 +4087,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 	long dtime4;
 	*/
 	
-	public Optional<Vol> createRandomVol(){
-		if(negativesZip.size()==0){
-			LogUtils.log("negativeZip is empty");
-			return Optional.absent();
-		}
-		
-		for(int j=0;j<20;j++){ //just check image exist
-	//		Stopwatch watch1=Stopwatch.createStarted();
-		int index=useRandomOnCreateVol?getRandom(0, negativesZip.size()):0;
-		
-		CVImageData pdata=negativesZip.get(index);
-		
-		
-		
-		//String extension=FileNames.getExtension(pdata.getFileName());
-		//FileType type=FileType.getFileTypeByExtension(extension);//need to know jpeg or png
-		//byte[] bt=imgFile.asUint8Array().toByteArray();
-		//this action kill 
-		
-		ImageData imageData=null;
-		//ImageElement negativeImage=null;
-	//	dtime1+=watch1.elapsed(TimeUnit.MILLISECONDS);
-		//Stopwatch watch2=Stopwatch.createStarted();
-		if(pdata!=lastData){
-		Optional<ImageElement> optional=negativesZip.getImageElement(pdata);
-		if(!optional.isPresent()){
-			LogUtils.log("skip.image not found in zip(or filter faild):"+pdata.getFileName()+" of "+negativesZip.getName());
-			continue;
-		}
-		ImageElement image=optional.get();
-		ImageElementUtils.copytoCanvas(image, sharedCanvas);
-		imageData=sharedCanvas.getContext2d().getImageData(0, 0, sharedCanvas.getCoordinateSpaceWidth(), sharedCanvas.getCoordinateSpaceHeight());
-		
-		}else{
-			imageData=lastImageData;
-		}
-		
-		lastData=pdata;
-		lastImageData=imageData;
-	//	dtime2+=watch2.elapsed(TimeUnit.MILLISECONDS);
-		//Stopwatch watch3=Stopwatch.createStarted();
-		//rect must be initialized when load
-		List<Rect> rects=loadRect(null,pdata.getFileName());
-		Rect rect=rects.remove(0);
-		if(rects.size()==0){
-				negativesZip.getDatas().remove(pdata);//remove permanently,if neee use,do refrash page
-				LogUtils.log("rect is empty removed:"+pdata.getFileName()+","+getNegativeInfo());
-		
-		}
-		//dtime3+=watch3.elapsed(TimeUnit.MILLISECONDS);
-		
-		//Stopwatch watch=Stopwatch.createStarted();
-		Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnly(imageData,rect.getX(),rect.getY(), rect.getWidth(), rect.getHeight(), GWTConvNetJs.netWidth+GWTConvNetJs.edgeSize,GWTConvNetJs.netHeight+GWTConvNetJs.edgeSize);
-		
-		
-		int[] binaryPattern=GWTConvNetJs.createLBPDepthFromUint8ArrayPacked(resized, false);
-		
-		Vol vol=GWTConvNetJs.createVolFromIndexes(binaryPattern,GWTConvNetJs.parseMaxLBPValue());
-		
-		//dtime+=watch.elapsed(TimeUnit.MILLISECONDS);
-		
-			return Optional.of(vol);
-		
-		}
-		return Optional.absent();
-	}
+	
 	
 	boolean isAllImageGrayscale=true;
 
@@ -4665,9 +4095,9 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 
 	private Label variationLevelLabel;
 
-	private IntegerBox detectWidth;
+	private IntegerBox detectWidthBox;
 
-	private IntegerBox detectHeight;
+	private IntegerBox detectHeightBox;
 
 	private Label cascadeLabel;
 
@@ -4948,22 +4378,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 	}
 	
 	
-	@SuppressWarnings("unchecked")
-	private List<Rect> loadRect(ImageElement image, String fileName) {
-		
-		
-		List<Rect> rects=rectsMap.get(fileName);
-		if(rects==null){
-			int minW=detectWidth.getValue();
-			int minH=detectHeight.getValue();
-			double min_scale=1.2;//no need really small pixel
-			
-			rects=RectGenerator.generateRect(image.getWidth(),image.getHeight(), 4, 1.4,minW,minH,min_scale);
-			//rects=generateRect(image, 2, 1.2);//this is too much make rects
-			rectsMap.put(fileName, ListUtils.shuffle(rects));
-		}
-		return rects;
-	}
+
 
 	public Vol createRandomVolFromPositiveStyle(){
 		for(int j=0;j<10;j++){
@@ -5067,6 +4482,16 @@ trainer.train(x, 0);
 var probability_volume2 = net.forward(x);
 console.log('probability that x is class 0: ' + probability_volume2.w[0]);
     }-*/;
+
+	@Override
+	public int getDetectWidth() {
+		return detectWidthBox.getValue();
+	}
+
+	@Override
+	public int getDetectHeight() {
+		return detectHeightBox.getValue();
+	}
 	
 	
 	
