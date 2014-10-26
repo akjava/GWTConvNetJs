@@ -176,6 +176,8 @@ public class GWTConvNetJs implements EntryPoint , HasDetectSize {
 	private CheckBox createHorizontalVolCheck;
 
 	private NegativeControler negativeControler;
+
+	private Label positiveZipLabel;
 	public class LBPImageZip extends CVImageZip{
 		private ByteImageDataIntConverter converter=new ByteImageDataIntConverter(lbpCanvas.getContext2d(),true);
 	
@@ -459,6 +461,8 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		});
 		saveButtons.add(saveReleaseBt);
 		
+		negativeControler=new NegativeControler(this);//create before fire events
+		
 		HorizontalPanel volOptions=new HorizontalPanel();
 		volOptions.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
 		volOptions.add(new Label("Negative Vol options"));
@@ -519,7 +523,25 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		loadPositiveZip();
 		//loadNegativeZip();
 		
-		negativeControler=new NegativeControler(this);
+		FileUploadForm positiveUpload=FileUtils.createSingleFileUploadForm(new DataArrayListener() {
+			
+			@Override
+			public void uploaded(File file, Uint8Array array) {
+				positiveZipLabel.setText(file.getFileName());
+				positivesZip=new CVImageZip(array);
+				loadPositiveZip(file.getFileName(),positivesZip);
+			}
+		});
+		
+		
+		HorizontalPanel positivePanel=new HorizontalPanel();
+		mainPanel.add(positivePanel);
+		positivePanel.add(new Label("Positive-Zip:"));
+		
+		positiveZipLabel=new Label("default");
+		positivePanel.add(positiveZipLabel);
+		positivePanel.add(positiveUpload);
+		
 		
 		
 		FileUploadForm negativeUpload=FileUtils.createSingleFileUploadForm(new DataArrayListener() {
@@ -527,9 +549,11 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 			@Override
 			public void uploaded(File file, Uint8Array array) {
 				negativeZipLabel.setText(file.getFileName());
-				negativeControler.uploaded(file,array,detectWidthBox.getValue(),detectHeightBox.getValue());
+				negativeControler.loadNegativeZip(file,array,detectWidthBox.getValue(),detectHeightBox.getValue());
 			}
 		});
+		
+		
 		HorizontalPanel negativePanel=new HorizontalPanel();
 		mainPanel.add(negativePanel);
 		negativePanel.add(new Label("Negative-Zip:"));
@@ -740,6 +764,12 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		minVariationBox.setWidth("40px");
 		firstPanel.add(minVariationBox);
 		
+		firstPanel.add(new Label("maxVariation:"));
+		final IntegerBox maxVariationBox=new IntegerBox();
+		maxVariationBox.setValue(6);//normal,1 skip initial repeat
+		maxVariationBox.setWidth("40px");
+		firstPanel.add(maxVariationBox);
+		
 		
 		HorizontalPanel secondPanel=new HorizontalPanel();
 		secondPanel.setVerticalAlignment(HorizontalPanel.ALIGN_MIDDLE);
@@ -892,11 +922,11 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 					
 				};
 				
-				//TODO make variation box;
+				
 				double startMatch=useFirstSpecialValue.getValue()?firstMatchRateBox.getValue():matchRateBox.getValue();
 				double startFalse=useFirstSpecialValue.getValue()?firstFalseRateBox.getValue():falseRateBox.getValue();
 				stageControler.start(new LearningInfo(maxStageBox.getValue(), matchRateBox.getValue(), falseRateBox.getValue(),startMatch, startFalse, 
-						minPositiveBox.getValue(), maxPositiveBox.getValue(),minVariationBox.getValue(), 6, maxLearningBox.getValue()));
+						minPositiveBox.getValue(), maxPositiveBox.getValue(),minVariationBox.getValue(), maxVariationBox.getValue(), maxLearningBox.getValue()));
 				
 			}
 		};
@@ -1508,8 +1538,79 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		
 	}
 
-	PointXY positiveSize;//middle of ratio create when load positives,use for reset
 	
+	private void loadPositiveZip(String fileName,CVImageZip positivesZip){
+
+		
+		Stopwatch watch=Stopwatch.createStarted();
+		
+		positivesZip.setName(fileName);
+		
+		checkState(positivesZip.size()>0,"info.txt or info.dat is empty");
+		
+		positivesZip.shuffle();
+		
+		//cropped image need slash edges.
+		/*
+		if(isCroppedImage){
+		for(CVImageData data:positivesZip.getDatas()){
+			for(Rect rect:data.getRects()){
+			//	LogUtils.log("before:"+rect.toString());
+				
+				//now stop convert lbp here
+				//rect.expand(-2, -2).copyTo(rect);//because LBP 1 neibors has problem
+				
+				//this already too much lost image info.
+				
+			//	LogUtils.log("after:"+rect.toString());
+			}
+		}
+		}
+		*/
+		
+		//loadZip();//need this
+		List<Rect> rects=Lists.newArrayList();
+		//calculare ratio
+		for(CVImageData data:positivesZip.getDatas()){
+			for(Rect rect:data.getRects()){
+				rects.add(rect);
+			}
+		}
+		
+		List<Double> ratios=Lists.newArrayList(FluentIterable.from(rects).transform(new Function<Rect, Double>() {
+
+			@Override
+			public Double apply(Rect input) {
+				
+				return (double)input.getWidth()/input.getHeight();
+			}
+		}));
+		
+		double average=Statics.average(ratios);
+		double middle=Statics.middle(ratios);
+		
+		int w=32;
+		int h=(int) (w/middle);
+		if(h%2==1){
+			if(h>w){
+				h--;
+			}else{
+				h++;
+			}
+		}
+		
+		positiveSize=new PointXY(w, h);
+		detectWidthBox.setValue(w);
+		detectHeightBox.setValue(h);
+		
+		LogUtils.log("Ratio:average="+average+",middle="+middle);
+		
+		LogUtils.log("posimages from "+positivesZip.getName()+" lines="+positivesZip.size()+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
+		
+	}
+	
+	
+	PointXY positiveSize;//middle of ratio create when load positives,use for reset
 	private void loadPositiveZip() {
 		final String positiveImageName="pos_eye_closed_clip.zip";//for test
 		//final String positiveImageName="pos_eye_front_clip.zip";
@@ -1522,70 +1623,8 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 
 			@Override
 			public void onLoadBinaryFile(ArrayBuffer buffer) {
-				
-				Stopwatch watch=Stopwatch.createStarted();
 				positivesZip=new CVImageZip(buffer);
-				positivesZip.setName(positiveImageName);
-				
-				checkState(positivesZip.size()>0,"info.txt or info.dat is empty");
-				
-				positivesZip.shuffle();
-				
-				//cropped image need slash edges.
-				if(isCroppedImage){
-				for(CVImageData data:positivesZip.getDatas()){
-					for(Rect rect:data.getRects()){
-					//	LogUtils.log("before:"+rect.toString());
-						
-						//now stop convert lbp here
-						//rect.expand(-2, -2).copyTo(rect);//because LBP 1 neibors has problem
-						
-						//this already too much lost image info.
-						
-					//	LogUtils.log("after:"+rect.toString());
-					}
-				}
-				}
-				
-				//loadZip();//need this
-				List<Rect> rects=Lists.newArrayList();
-				//calculare ratio
-				for(CVImageData data:positivesZip.getDatas()){
-					for(Rect rect:data.getRects()){
-						rects.add(rect);
-					}
-				}
-				
-				List<Double> ratios=Lists.newArrayList(FluentIterable.from(rects).transform(new Function<Rect, Double>() {
-
-					@Override
-					public Double apply(Rect input) {
-						
-						return (double)input.getWidth()/input.getHeight();
-					}
-				}));
-				
-				double average=Statics.average(ratios);
-				double middle=Statics.middle(ratios);
-				
-				int w=32;
-				int h=(int) (w/middle);
-				if(h%2==1){
-					if(h>w){
-						h--;
-					}else{
-						h++;
-					}
-				}
-				
-				positiveSize=new PointXY(w, h);
-				detectWidthBox.setValue(w);
-				detectHeightBox.setValue(h);
-				
-				LogUtils.log("Ratio:average="+average+",middle="+middle);
-				
-				LogUtils.log("posimages from "+positivesZip.getName()+" lines="+positivesZip.size()+" time="+watch.elapsed(TimeUnit.SECONDS)+"s");
-				
+				loadPositiveZip(positiveImageName,positivesZip);
 			}
 			
 			@Override

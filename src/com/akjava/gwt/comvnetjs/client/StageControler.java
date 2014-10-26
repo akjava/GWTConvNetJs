@@ -74,7 +74,7 @@ public abstract class StageControler {
 	}
 	
 	public void start(final LearningInfo learningInfo){
-		
+		LogUtils.log("stage controler-started");
 		checkState(doing==false,"error somehow other thread runnning.");
 		//initialize;
 		stageResults=Lists.newArrayList();

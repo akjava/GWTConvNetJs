@@ -72,6 +72,10 @@ public class NegativeControler {
 		return negativesZip;
 	}
 	private Map<String,List<Rect>> rectsMap=new HashMap<String, List<Rect>>();
+	
+	/**
+	 * @deprecated
+	 */
 	public void loadNegativeZip(final int minW,final int minH) {
 		final String negativeImageName="neg_eye_paint_face.zip";//bg2 is face up
 		//final String negativeImageName="neg_eye_clip.zip";//bg2 is face up
@@ -80,6 +84,7 @@ public class NegativeControler {
 BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	
 	
+
 
 
 
@@ -99,6 +104,24 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		watch.reset();watch.start();
 		final List<CVImageData> datas=Lists.newArrayList(negativesZip.getDatas());
 		
+		
+		if(negativesZip.getType()==CVImageZip.POSITIVES){
+			List<CVImageData> invalidEmptyDatas=Lists.newArrayList();
+			//has rect
+			for(CVImageData data:negativesZip.getDatas()){
+				if(data.getRects()!=null && data.getRects().size()>0){
+					List<Rect> rects=Lists.newArrayList(data.getRects());
+					rectsMap.put(data.getFileName(), ListUtils.shuffle(rects));//put rect directly
+				}else{
+					LogUtils.log("empty rects on negative zip removed:"+data.getFileName());
+					invalidEmptyDatas.add(data);
+				}
+			}
+			negativesZip.getDatas().removeAll(invalidEmptyDatas);
+			LogUtils.log(getNegativeInfo());
+			LogUtils.log("load negatives with rects from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+			
+		}else{
 		
 		WorkerPool workerPool=new WorkerPool(24,"/workers/uint8tobase64.js") {
 			int extracted;
@@ -141,6 +164,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			
 		};
 		multiCaller.start(10);
+		}
 		
 		/*
 		AsyncMultiCaller<CVImageData> preloader=new AsyncMultiCaller<CVImageData>(datas) {
@@ -172,6 +196,10 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		
 	}
 	
+	/*
+	 * load all image-element if cache
+	 * create all rect if not exist
+	 */
 	public String getNegativeInfo(){
 		Stopwatch watch=Stopwatch.createUnstarted();
 		int totalRect=0;
@@ -279,7 +307,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	}
 	
 	
-	public void uploaded(File file, Uint8Array array,final int minW,final int minH) {
+	public void loadNegativeZip(File file, Uint8Array array,final int minW,final int minH) {
 		rectsMap.clear();//zip replaced;
 		//negativeZipLabel.setText(file.getFileName());
 		final Stopwatch watch=Stopwatch.createStarted();
@@ -292,6 +320,27 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		
 		LogUtils.log("pre-extract-time:"+watch.elapsed(TimeUnit.SECONDS)+"s");
 		watch.reset();watch.start();
+		
+		if(negativesZip.getType()==CVImageZip.POSITIVES){
+			List<CVImageData> invalidEmptyDatas=Lists.newArrayList();
+			//has rect
+			for(CVImageData data:negativesZip.getDatas()){
+				if(data.getRects()!=null && data.getRects().size()>0){
+					List<Rect> rects=Lists.newArrayList(data.getRects());
+					rectsMap.put(data.getFileName(), ListUtils.shuffle(rects));//put rect directly
+				}else{
+					LogUtils.log("empty rects on negative zip removed:"+data.getFileName());
+					invalidEmptyDatas.add(data);
+				}
+			}
+			negativesZip.getDatas().removeAll(invalidEmptyDatas);
+			LogUtils.log(getNegativeInfo());
+			LogUtils.log("load negatives with rects from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+			
+		}else{
+		
+		
+		
 		final List<CVImageData> datas=Lists.newArrayList(negativesZip.getDatas());
 		
 		
@@ -336,6 +385,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			
 		};
 		multiCaller.start(10);
+		}
 		
 	}
 	public CVImageData getCVImageData(int index){
@@ -348,7 +398,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	
 
 	Canvas sharedCanvas = Canvas.createIfSupported();
-	//TODO move to negative
+	
 		public Optional<Vol> createRandomVol(){
 			if(size()==0){
 				LogUtils.log("negativeZip is empty");
@@ -397,7 +447,9 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			Rect rect=rects.remove(0);
 			if(rects.size()==0){
 					negativesZip.getDatas().remove(pdata);//remove permanently,if neee use,do refrash page
-					LogUtils.log("rect is empty removed:"+pdata.getFileName()+","+getNegativeInfo());
+					if(negativesZip.getType()!=CVImageZip.POSITIVES){
+						LogUtils.log("rect is empty removed:"+pdata.getFileName()+","+getNegativeInfo());
+					}
 			
 			}
 			//dtime3+=watch3.elapsed(TimeUnit.MILLISECONDS);
