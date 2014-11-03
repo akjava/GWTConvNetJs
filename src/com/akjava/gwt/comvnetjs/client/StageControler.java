@@ -73,6 +73,8 @@ public abstract class StageControler {
 		sendInfo("search-negative:");
 	}
 	
+	int called;
+	int skipRate=10;
 	public void start(final LearningInfo learningInfo){
 		LogUtils.log("stage controler-started");
 		checkState(doing==false,"error somehow other thread runnning.");
@@ -93,7 +95,7 @@ public abstract class StageControler {
 		stageScoreGroup=new ScoreGroup();
 		
 		final Score targetScore=new Score(learningInfo.firstMatchRate,learningInfo.firstFalseRate);
-		final Stopwatch watch=Stopwatch.createStarted();
+		final Stopwatch totalWatch=Stopwatch.createStarted();
 		
 		
 		setInitialSearchPassedImageMode(true);
@@ -113,6 +115,14 @@ public abstract class StageControler {
 				if(doing){
 					return;
 				}
+				
+				//skip check
+				called++;
+				if(called==skipRate){
+					called=0;
+					return;//skip for gc
+				}
+				
 				//ratio check
 				if(mode==MODE_INITIAL && ratio<learningInfo.minRatio){
 					sendInfo("cancelled:reach ratio");
@@ -284,10 +294,12 @@ public abstract class StageControler {
 					phaseData.learningCount=learningTime;
 					learningTime=0;
 					//time
-					long second=watch.elapsed(TimeUnit.SECONDS);
-					watch.reset();watch.start();
+					long second=totalWatch.elapsed(TimeUnit.SECONDS);
+					totalWatch.reset();totalWatch.start();
 					phaseData.consumeSecond=(int)second;
 					phaseData.phaseInfo.variationSize=variationSize;//update late
+					//TODO more info
+					LogUtils.log("phase-end:time="+phaseData.consumeSecond+"s,learning="+phaseData.learningCount);
 					
 					phaseData=new PhaseData(new PhaseInfo(variationSize,ratio,learningInfo.matchRate,learningInfo.falseRate));
 					phaseDatas.add(phaseData);
@@ -488,6 +500,9 @@ public abstract class StageControler {
 	
 	public static class PhaseData{
 		private int consumeSecond;
+		public int getConsumeSecond() {
+			return consumeSecond;
+		}
 		private PhaseInfo phaseInfo;
 		public PhaseInfo getPhaseInfo() {
 			return phaseInfo;

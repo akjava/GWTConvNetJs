@@ -1020,6 +1020,22 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 					}
 				};
 				table.addColumn(learningColumn,"FinalLearning");
+				
+				TextColumn<StageResult> totalTimeColumn=new TextColumn<StageResult>() {
+					@Override
+					public String getValue(StageResult object) {
+						if(object.getPhaseDatas()==null || object.getPhaseDatas().size()==0){
+							return "";
+						}
+						int time=0;
+						for(PhaseData data:object.getPhaseDatas()){
+							time+=data.getConsumeSecond();
+						}
+						
+						return String.valueOf(time);
+					}
+				};
+				table.addColumn(totalTimeColumn,"TotalTime(second)");
 			}
 		};
 		
