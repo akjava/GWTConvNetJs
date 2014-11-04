@@ -8,15 +8,18 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import com.akjava.gwt.comvnetjs.client.GWTConvNetJs.MakeRectResult;
+import com.akjava.gwt.comvnetjs.client.worker.HaarRect;
 import com.akjava.gwt.comvnetjs.client.worker.MakeRectParam;
 import com.akjava.gwt.html5.client.file.File;
 import com.akjava.gwt.html5.client.file.Uint8Array;
 import com.akjava.gwt.jszip.client.JSFile;
 import com.akjava.gwt.lib.client.Base64Utils;
 import com.akjava.gwt.lib.client.BrowserUtils;
-import com.akjava.gwt.lib.client.ImageElementUtils;
 import com.akjava.gwt.lib.client.BrowserUtils.LoadBinaryListener;
+import com.akjava.gwt.lib.client.ImageElementUtils;
 import com.akjava.gwt.lib.client.LogUtils;
+import com.akjava.gwt.lib.client.experimental.AsyncMultiCaller;
+import com.akjava.gwt.lib.client.experimental.ProgressCanvas;
 import com.akjava.gwt.lib.client.experimental.ResizeUtils;
 import com.akjava.gwt.lib.client.experimental.opencv.CVImageData;
 import com.akjava.gwt.webworker.client.Worker2;
@@ -71,8 +74,8 @@ public class NegativeControler {
 	public CVImageZip getNegativesZip() {
 		return negativesZip;
 	}
-	private Map<String,List<Rect>> rectsMap=new HashMap<String, List<Rect>>();
-	
+	//private Map<String,List<Rect>> rectsMap=new HashMap<String, List<Rect>>();
+	private Map<String,List<HaarRect>> rectsMap=new HashMap<String, List<HaarRect>>();
 	/**
 	 * @deprecated
 	 */
@@ -306,6 +309,108 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	
 	}
 	
+	public void loadNegativeZipNoWorker(File file, Uint8Array array,final int minW,final int minH) {
+		rectsMap.clear();//zip replaced;
+		//negativeZipLabel.setText(file.getFileName());
+		final Stopwatch watch=Stopwatch.createStarted();
+		
+		negativesZip=new CVImageZip(array);
+		negativesZip.setUseCache(true);
+		negativesZip.setName(file.getFileName());
+		negativesZip.shuffle();//negative file need shuffle?
+		checkState(negativesZip.size()>0,"some how empty zip or index/bg");
+		
+		LogUtils.log("pre-extract-time:"+watch.elapsed(TimeUnit.SECONDS)+"s");
+		watch.reset();watch.start();
+		
+		if(negativesZip.getType()==CVImageZip.POSITIVES){
+			List<CVImageData> invalidEmptyDatas=Lists.newArrayList();
+			//has rect
+			for(CVImageData data:negativesZip.getDatas()){
+				if(data.getRects()!=null && data.getRects().size()>0){
+					List<Rect> rects=Lists.newArrayList(data.getRects());
+					
+					rectsMap.put(data.getFileName(), ListUtils.shuffle(rects));//put rect directly
+					
+					
+				}else{
+					LogUtils.log("empty rects on negative zip removed:"+data.getFileName());
+					invalidEmptyDatas.add(data);
+				}
+			}
+			negativesZip.getDatas().removeAll(invalidEmptyDatas);
+			LogUtils.log(getNegativeInfo());
+			LogUtils.log("load negatives with rects from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+			
+		}else{
+		
+		
+		
+		final List<CVImageData> datas=Lists.newArrayList(negativesZip.getDatas());
+		
+		//no need shuffle
+		//ListUtils.shuffle(datas);//possile some data is wrong
+		
+		final ProgressCanvas progress=new ProgressCanvas("Loading negatives:"+datas.size()+" images", datas.size());
+		progress.show();
+		AsyncMultiCaller<CVImageData> caller=new AsyncMultiCaller<CVImageData>(datas) {
+			ImageElement imageElement;//too much create?
+			@Override
+			public void doFinally(boolean cancelled) {
+				progress.hide();
+				//don't heavy thing do here
+				LogUtils.log("end-caller");
+				LogUtils.log(getNegativeInfo());
+				LogUtils.log("load negatives-image-only from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+			
+			}
+
+			@Override
+			public void execAsync(CVImageData data) {
+				LogUtils.log("start-execAsync:"+data.getFileName());
+				JSFile file=negativesZip.getZip().getFile(data.getFileName());
+				Uint8Array array=file.asUint8Array();
+				//file.asBinary()
+				LogUtils.log("uint8-length:"+array.length());
+				String base64=Base64Utils.encodeBase64(array);
+				LogUtils.log("64length:"+base64.length());
+				
+				for(FileType type:FileType.getFileTypeFromFileName(data.getFileName()).asSet()){
+					String dataUrl=Base64Utils.toDataUrl(type.getMimeType(),base64);
+					negativesZip.putCache(data.getFileName(), dataUrl);
+					if(imageElement==null){
+						imageElement=ImageElementUtils.create(dataUrl);
+					}else{
+						imageElement.setSrc(dataUrl);
+					}
+					loadRect(imageElement, data.getFileName(), minW, minH);
+				}
+				LogUtils.log("load rected");
+				done(data,true);
+				progress.progress(1);
+				
+			}
+		};
+		caller.startCall();
+		}
+		
+	}
+	
+	private List<Rect> haarRectToRect(List<HaarRect> rects){
+		List<Rect> result=Lists.newArrayList();
+		for(HaarRect rect:rects){
+			result.add(rect.toRect());
+		}
+		return result;
+	}
+	
+	private List<HaarRect> rectToHaarRect(List<Rect> rects){
+		List<HaarRect> result=Lists.newArrayList();
+		for(Rect rect:rects){
+			result.add( HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));
+		}
+		return result;
+	}
 	
 	public void loadNegativeZip(File file, Uint8Array array,final int minW,final int minH) {
 		rectsMap.clear();//zip replaced;
@@ -360,6 +465,8 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 					//how to catch all data extracted.
 					if(extracted==negativesZip.getDatas().size()){
 						//createNegativeRectangles();//this way slow,but less freeze time
+						
+						//in this here create rectangles and this is really take a time and crash browser
 						LogUtils.log(getNegativeInfo());
 						LogUtils.log("load negatives-image-only from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
 					}

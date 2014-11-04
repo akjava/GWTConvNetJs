@@ -543,13 +543,14 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		positivePanel.add(positiveUpload);
 		
 		
-		
+		//around max 1GB memory,means 60MB images 
 		FileUploadForm negativeUpload=FileUtils.createSingleFileUploadForm(new DataArrayListener() {
 			
 			@Override
 			public void uploaded(File file, Uint8Array array) {
 				negativeZipLabel.setText(file.getFileName());
-				negativeControler.loadNegativeZip(file,array,detectWidthBox.getValue(),detectHeightBox.getValue());
+				negativeControler.loadNegativeZipNoWorker(file,array,detectWidthBox.getValue(),detectHeightBox.getValue());
+				//negativeControler.loadNegativeZip(file,array,detectWidthBox.getValue(),detectHeightBox.getValue());
 			}
 		});
 		
@@ -1378,7 +1379,21 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		return convertedVol;
 	}
 	
+	private Map<String,List<Rect>> testMap=new HashMap<String, List<Rect>>();
 	private void doTest1(){
+		
+		List<Rect> rects=RectGenerator.generateRect(640,480, 4, 1.4,32,16,1.0);
+		LogUtils.log("rect-count:"+rects.size());
+		int index=testMap.size();
+		for(int i=0;i<1000;i++){
+			testMap.put(""+index, ListUtils.shuffle(rects));
+			index++;
+		}
+		LogUtils.log("map-size:"+testMap.size());
+		if(true){
+			return;
+		}
+		
 	//	dtime=0;dtime1=0;dtime2=0;dtime3=0;
 		/*
 		Optional<Vol> optional=createPassedRandomVol(getLastCascade());
