@@ -17,6 +17,7 @@ import com.akjava.gwt.lib.client.Base64Utils;
 import com.akjava.gwt.lib.client.BrowserUtils;
 import com.akjava.gwt.lib.client.BrowserUtils.LoadBinaryListener;
 import com.akjava.gwt.lib.client.ImageElementUtils;
+import com.akjava.gwt.lib.client.JavaScriptUtils;
 import com.akjava.gwt.lib.client.LogUtils;
 import com.akjava.gwt.lib.client.experimental.AsyncMultiCaller;
 import com.akjava.gwt.lib.client.experimental.ProgressCanvas;
@@ -35,6 +36,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.Lists;
 import com.google.gwt.canvas.client.Canvas;
 import com.google.gwt.canvas.dom.client.ImageData;
+import com.google.gwt.core.client.JsArray;
 import com.google.gwt.dom.client.ImageElement;
 import com.google.gwt.typedarrays.client.Uint8ArrayNative;
 import com.google.gwt.typedarrays.shared.ArrayBuffer;
@@ -211,18 +213,26 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		}
 		int minW=hasDetectSize.getDetectWidth();
 		int minH=hasDetectSize.getDetectHeight();
+		
+		watch.start();
+		/*
 		for(CVImageData data:negativesZip.getDatas()){
 			for(ImageElement image:negativesZip.getImageElement(data).asSet()){
-				watch.start();
+				
 			List<Rect> rects=loadRect(image, data.getFileName(),minW, minH);
-			watch.stop();
+			
 			totalRect+=rects.size();
 			}
-		}
+		}*/
+		totalRect=countRects(minW, minH);
+		watch.stop();
+		
 		//LogUtils.log();
 
 		return "negative-info:remain "+totalRect+" rects of "+negativesZip.getDatas().size()+" images"+" rect-generate-time:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms";
 	}
+	
+	
 	
 	/*
 	 * int minW=detectWidth.getValue();
@@ -232,17 +242,69 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	public List<Rect> loadRect(ImageElement image, String fileName,int minW,int minH) {
 		
 		
-		List<Rect> rects=rectsMap.get(fileName);
+		List<Rect> rects=haarRectToRect(rectsMap.get(fileName));
 		if(rects==null){
 			
 			double min_scale=1.2;//no need really small pixel
 			
 			rects=RectGenerator.generateRect(image.getWidth(),image.getHeight(), 4, 1.4,minW,minH,min_scale);
 			//rects=generateRect(image, 2, 1.2);//this is too much make rects
-			rectsMap.put(fileName, ListUtils.shuffle(rects));
+			rectsMap.put(fileName, rectToHaarRect(ListUtils.shuffle(rects)));
 		}
 		return rects;
 	}
+	
+public void generateRect(ImageElement image, String fileName,int minW,int minH) {
+		if(rectsMap.get(fileName)==null){
+			//List<Rect> rects=haarRectToRect(rectsMap.get(fileName));
+			double min_scale=1.0;//no need really small pixel
+			
+			//JsArray<HaarRect> haars=RectGenerator.generateHaarRect(image.getWidth(),image.getHeight(), 8, 1.4,minW,minH,min_scale);
+			
+			JsArray<HaarRect> haars=RectGenerator.generateHaarRect(image.getWidth(),image.getHeight(), 4, 1.4,minW,minH,min_scale);
+			List<HaarRect> haarsList=ListUtils.shuffle(JavaScriptUtils.toList(haars));
+			
+			
+			//rects=generateRect(image, 2, 1.2);//this is too much make rects
+			
+			/*
+			List<Rect> rect=RectGenerator.generateRect(image.getWidth(),image.getHeight(), 4, 1.4,minW,minH,min_scale);
+			LogUtils.log(rect.size());
+			rect=ListUtils.shuffle(rect);
+			
+			List<short[]> values=Lists.newArrayList();
+			for(Rect haar:rect){
+			//for(HaarRect haar:haarsList){
+			short[] value=new short[]{(short)haar.getX(),(short)haar.getY(),(short)haar.getWidth(),(short)haar.getHeight()};
+			values.add(value);
+			}
+			*/
+			
+			//tmp.put(fileName, haars);//for test
+			
+			rectsMap.put(fileName, haarsList);
+		}
+	}
+private Map<String,JsArray<HaarRect>> tmp=new HashMap<String, JsArray<HaarRect>>();
+
+//private Map<String,List<short[]>> tmp=new HashMap<String, List<short[]>>();
+
+public int countRects(int minW,int minH){
+	int totalRect=0;
+	for(CVImageData data:negativesZip.getDatas()){
+		if(rectsMap.get(data.getFileName())==null){
+			for(ImageElement image:negativesZip.getImageElement(data).asSet()){
+				generateRect(image, data.getFileName(),minW, minH);
+				totalRect+=rectsMap.get(data.getFileName()).size();
+				}
+			
+		}else{
+			totalRect+=rectsMap.get(data.getFileName()).size();
+		}
+		
+	}
+	return totalRect;
+}
 	
 
 	//some how this is slow
@@ -367,13 +429,13 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 
 			@Override
 			public void execAsync(CVImageData data) {
-				LogUtils.log("start-execAsync:"+data.getFileName());
+			//	LogUtils.log("start-execAsync:"+data.getFileName());
 				JSFile file=negativesZip.getZip().getFile(data.getFileName());
 				Uint8Array array=file.asUint8Array();
 				//file.asBinary()
-				LogUtils.log("uint8-length:"+array.length());
+			//	LogUtils.log("uint8-length:"+array.length());
 				String base64=Base64Utils.encodeBase64(array);
-				LogUtils.log("64length:"+base64.length());
+				//LogUtils.log("64length:"+base64.length());
 				
 				for(FileType type:FileType.getFileTypeFromFileName(data.getFileName()).asSet()){
 					String dataUrl=Base64Utils.toDataUrl(type.getMimeType(),base64);
@@ -383,9 +445,10 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 					}else{
 						imageElement.setSrc(dataUrl);
 					}
-					loadRect(imageElement, data.getFileName(), minW, minH);
+					generateRect(imageElement, data.getFileName(), minW, minH);//for flush rect,call in async-gc-avaiable-loop
+					//loadRect(imageElement, data.getFileName(), minW, minH);
 				}
-				LogUtils.log("load rected");
+				//LogUtils.log("load rected");
 				done(data,true);
 				progress.progress(1);
 				
@@ -397,6 +460,9 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	}
 	
 	private List<Rect> haarRectToRect(List<HaarRect> rects){
+		if(rects==null){
+			return null;
+		}
 		List<Rect> result=Lists.newArrayList();
 		for(HaarRect rect:rects){
 			result.add(rect.toRect());
@@ -405,6 +471,9 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 	}
 	
 	private List<HaarRect> rectToHaarRect(List<Rect> rects){
+		if(rects==null){
+			return null;
+		}
 		List<HaarRect> result=Lists.newArrayList();
 		for(Rect rect:rects){
 			result.add( HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));

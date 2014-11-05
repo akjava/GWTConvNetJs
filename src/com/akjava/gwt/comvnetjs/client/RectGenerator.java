@@ -9,6 +9,7 @@ import com.google.gwt.core.client.JavaScriptObject;
 import com.google.gwt.core.client.JsArray;
 
 public class RectGenerator {
+	//TODO need test for sure both result is same
 	private RectGenerator(){}
 	public static JsArray<HaarRect> generateHaarRect(int imageW,int imageH,int stepScale,double scale_factor,int minW,int minH,double min_scale) {
 		//Stopwatch watch=Stopwatch.createStarted();
