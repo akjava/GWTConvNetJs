@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import com.akjava.gwt.comvnetjs.client.GWTConvNetJs.DetectorOption;
 import com.akjava.gwt.comvnetjs.client.GWTConvNetJs.MakeRectResult;
 import com.akjava.gwt.comvnetjs.client.worker.HaarRect;
 import com.akjava.gwt.comvnetjs.client.worker.MakeRectParam;
@@ -28,6 +29,7 @@ import com.akjava.gwt.webworker.client.WorkerPool;
 import com.akjava.gwt.webworker.client.WorkerPool.Uint8WorkerPoolData;
 import com.akjava.gwt.webworker.client.WorkerPool.WorkerPoolData;
 import com.akjava.gwt.webworker.client.WorkerPoolMultiCaller;
+import com.akjava.lib.common.graphics.IntegerRect;
 import com.akjava.lib.common.graphics.Rect;
 import com.akjava.lib.common.io.FileType;
 import com.akjava.lib.common.utils.ListUtils;
@@ -77,7 +79,7 @@ public class NegativeControler {
 		return negativesZip;
 	}
 	//private Map<String,List<Rect>> rectsMap=new HashMap<String, List<Rect>>();
-	private Map<String,List<HaarRect>> rectsMap=new HashMap<String, List<HaarRect>>();
+	private Map<String,List<IntegerRect>> rectsMap=new HashMap<String, List<IntegerRect>>();
 	/**
 	 * @deprecated
 	 */
@@ -228,32 +230,63 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		watch.stop();
 		
 		//LogUtils.log();
+		
+		String totalRectLabel=totalRect==-1?"unknown":String.valueOf(totalRect);
 
-		return "negative-info:remain "+totalRect+" rects of "+negativesZip.getDatas().size()+" images"+" rect-generate-time:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms";
+		return "negative-info:remain "+totalRectLabel+" rects of "+negativesZip.getDatas().size()+" images"+" rect-generate-time:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms";
 	}
+	private boolean allowRandom;
 	
 	
-	
+
+	public boolean isAllowRandom() {
+		return allowRandom;
+	}
+
+	public void setAllowRandom(boolean allowRandom) {
+		this.allowRandom = allowRandom;
+	}
+
 	/*
 	 * int minW=detectWidth.getValue();
 			int minH=detectHeight.getValue();
 	 */
+	
+	public List<IntegerRect> loadRect(ImageElement image, String fileName,int minW,int minH) {
+		return loadRect(image.getWidth(),image.getHeight(),fileName,minW,minH);
+	}
+	
 	@SuppressWarnings("unchecked")
-	public List<Rect> loadRect(ImageElement image, String fileName,int minW,int minH) {
+public List<IntegerRect> loadRect(int w,int h,String fileName,int minW,int minH) {
+		//LogUtils.log("load-rect:"+fileName);
 		
-		
-		List<Rect> rects=haarRectToRect(rectsMap.get(fileName));
+		List<IntegerRect> rects=rectsMap.get(fileName);
 		if(rects==null){
 			
-			double min_scale=1.2;//no need really small pixel
+			//double min_scale=1.2;//no need really small pixel
 			
-			rects=RectGenerator.generateRect(image.getWidth(),image.getHeight(), 4, 1.4,minW,minH,min_scale);
+			rects=RectGenerator.generateIntegerRect(w,h, detectorOption.stepPosition, detectorOption.startScale,minW,minH,detectorOption.startScale);
 			//rects=generateRect(image, 2, 1.2);//this is too much make rects
-			rectsMap.put(fileName, rectToHaarRect(ListUtils.shuffle(rects)));
+			rectsMap.put(fileName, ListUtils.shuffle(rects));
 		}
 		return rects;
 	}
+	public  void clearRect(String fileName){
+		rectsMap.remove(fileName);
+	}
 	
+
+	private DetectorOption detectorOption;
+	
+public DetectorOption getDetectorOption() {
+		return detectorOption;
+	}
+
+	public void setDetectorOption(DetectorOption detectorOption) {
+		this.detectorOption = detectorOption;
+	}
+
+@SuppressWarnings("unchecked")
 public void generateRect(ImageElement image, String fileName,int minW,int minH) {
 		if(rectsMap.get(fileName)==null){
 			//List<Rect> rects=haarRectToRect(rectsMap.get(fileName));
@@ -261,8 +294,7 @@ public void generateRect(ImageElement image, String fileName,int minW,int minH) 
 			
 			//JsArray<HaarRect> haars=RectGenerator.generateHaarRect(image.getWidth(),image.getHeight(), 8, 1.4,minW,minH,min_scale);
 			
-			JsArray<HaarRect> haars=RectGenerator.generateHaarRect(image.getWidth(),image.getHeight(), 4, 1.4,minW,minH,min_scale);
-			List<HaarRect> haarsList=ListUtils.shuffle(JavaScriptUtils.toList(haars));
+			List<IntegerRect> rects=RectGenerator.generateIntegerRect(image.getWidth(),image.getHeight(), 4, 1.4,minW,minH,min_scale);
 			
 			
 			//rects=generateRect(image, 2, 1.2);//this is too much make rects
@@ -282,14 +314,14 @@ public void generateRect(ImageElement image, String fileName,int minW,int minH) 
 			
 			//tmp.put(fileName, haars);//for test
 			
-			rectsMap.put(fileName, haarsList);
+			rectsMap.put(fileName, ListUtils.shuffle(rects));
 		}
 	}
-private Map<String,JsArray<HaarRect>> tmp=new HashMap<String, JsArray<HaarRect>>();
-
-//private Map<String,List<short[]>> tmp=new HashMap<String, List<short[]>>();
 
 public int countRects(int minW,int minH){
+	if(!allowRandom){
+		return -1;
+	}
 	int totalRect=0;
 	for(CVImageData data:negativesZip.getDatas()){
 		if(rectsMap.get(data.getFileName())==null){
@@ -378,6 +410,7 @@ public int countRects(int minW,int minH){
 		
 		negativesZip=new CVImageZip(array);
 		negativesZip.setUseCache(true);
+		
 		negativesZip.setName(file.getFileName());
 		negativesZip.shuffle();//negative file need shuffle?
 		checkState(negativesZip.size()>0,"some how empty zip or index/bg");
@@ -417,18 +450,33 @@ public int countRects(int minW,int minH){
 		progress.show();
 		AsyncMultiCaller<CVImageData> caller=new AsyncMultiCaller<CVImageData>(datas) {
 			ImageElement imageElement;//too much create?
+			int max=10000000;//million
+			int total=0;
+			List<CVImageData> removeLater=Lists.newArrayList();
 			@Override
 			public void doFinally(boolean cancelled) {
 				progress.hide();
+				
+				//can't use because of can't create rect lack of memory.
+				negativesZip.getDatas().removeAll(removeLater);
+				
+				//TODO support recover later.maybe when image remove
+				
+				
 				//don't heavy thing do here
 				LogUtils.log("end-caller");
 				LogUtils.log(getNegativeInfo());
 				LogUtils.log("load negatives-image-only from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
 			
+				//TODO alert if skipped
 			}
 
 			@Override
 			public void execAsync(CVImageData data) {
+				if(total>max){
+					removeLater.add(data);
+					LogUtils.log(max+" max-rect reached.skipped "+data.getFileName());
+				}else{
 			//	LogUtils.log("start-execAsync:"+data.getFileName());
 				JSFile file=negativesZip.getZip().getFile(data.getFileName());
 				Uint8Array array=file.asUint8Array();
@@ -445,8 +493,17 @@ public int countRects(int minW,int minH){
 					}else{
 						imageElement.setSrc(dataUrl);
 					}
-					generateRect(imageElement, data.getFileName(), minW, minH);//for flush rect,call in async-gc-avaiable-loop
+					
+					if(allowRandom){
+						generateRect(imageElement, data.getFileName(), minW, minH);//for flush rect,call in async-gc-avaiable-loop
+						int size=rectsMap.get(data.getFileName()).size();
+						
+						total+=size;
+						LogUtils.log("size:"+size+",total="+total);
+					}
+					
 					//loadRect(imageElement, data.getFileName(), minW, minH);
+				}
 				}
 				//LogUtils.log("load rected");
 				done(data,true);
@@ -619,14 +676,17 @@ public int countRects(int minW,int minH){
 		//	dtime2+=watch2.elapsed(TimeUnit.MILLISECONDS);
 			//Stopwatch watch3=Stopwatch.createStarted();
 			//rect must be initialized when load
-			List<Rect> rects=loadRect(null,pdata.getFileName(),detectWidth,detectHeight);
-			Rect rect=rects.remove(0);
+			
+			//if not allow random(for reduce memory),generate rect here
+			List<IntegerRect> rects=loadRect(lastImageData.getWidth(),lastImageData.getHeight(),pdata.getFileName(),detectWidth,detectHeight);
+			IntegerRect rect=rects.remove(0);
 			if(rects.size()==0){
 					negativesZip.getDatas().remove(pdata);//remove permanently,if neee use,do refrash page
 					if(negativesZip.getType()!=CVImageZip.POSITIVES){
 						LogUtils.log("rect is empty removed:"+pdata.getFileName()+","+getNegativeInfo());
 					}
 			
+					clearRect(pdata.getFileName());
 			}
 			//dtime3+=watch3.elapsed(TimeUnit.MILLISECONDS);
 			

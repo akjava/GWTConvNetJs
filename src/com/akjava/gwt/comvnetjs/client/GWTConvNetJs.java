@@ -2,6 +2,7 @@ package com.akjava.gwt.comvnetjs.client;
 
 import static com.google.common.base.Preconditions.checkState;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -56,6 +57,7 @@ import com.akjava.gwt.webworker.client.WorkerPool;
 import com.akjava.gwt.webworker.client.WorkerPool.HashedParameterData;
 import com.akjava.gwt.webworker.client.WorkerPool.WorkerPoolData;
 import com.akjava.gwt.webworker.client.WorkerPoolMultiCaller;
+import com.akjava.lib.common.graphics.IntegerRect;
 import com.akjava.lib.common.graphics.Rect;
 import com.akjava.lib.common.io.FileType;
 import com.akjava.lib.common.utils.FileNames;
@@ -66,6 +68,7 @@ import com.google.common.base.Optional;
 import com.google.common.base.Predicate;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.FluentIterable;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.google.common.primitives.Doubles;
@@ -99,6 +102,7 @@ import com.google.gwt.json.client.JSONObject;
 import com.google.gwt.json.client.JSONParser;
 import com.google.gwt.json.client.JSONString;
 import com.google.gwt.json.client.JSONValue;
+import com.google.gwt.text.shared.Renderer;
 import com.google.gwt.typedarrays.client.Uint8ArrayNative;
 import com.google.gwt.typedarrays.shared.ArrayBuffer;
 import com.google.gwt.user.cellview.client.CellTable;
@@ -118,6 +122,7 @@ import com.google.gwt.user.client.ui.ListBox;
 import com.google.gwt.user.client.ui.Panel;
 import com.google.gwt.user.client.ui.RootLayoutPanel;
 import com.google.gwt.user.client.ui.ScrollPanel;
+import com.google.gwt.user.client.ui.ValueListBox;
 import com.google.gwt.user.client.ui.VerticalPanel;
 import com.google.gwt.webworker.client.MessageEvent;
 
@@ -543,13 +548,52 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		positivePanel.add(positiveUpload);
 		
 		
+		List<DetectorOption> detectorPresets=ImmutableList.of(
+				new DetectorOption("few", 4, 1.6, 1.2),
+				new DetectorOption("normal", 4, 1.2, 1.0),
+				new DetectorOption("many", 2, 1.2, 1.0));
+			
+		final ValueListBox<DetectorOption> detectorPreset=new ValueListBox<DetectorOption>(new Renderer<DetectorOption>() {
+
+			@Override
+			public String render(DetectorOption object) {
+				return object.name;
+			}
+
+			@Override
+			public void render(DetectorOption object, Appendable appendable) throws IOException {
+				// TODO Auto-generated method stub
+				
+			}
+		});
+		detectorPreset.setValue(detectorPresets.get(1));
+		detectorPreset.setAcceptableValues(detectorPresets);
+		
+		
+		final CheckBox allowRandomCheck=new CheckBox("allow random");
+		allowRandomCheck.setValue(true);
 		//around max 1GB memory,means 60MB images 
 		FileUploadForm negativeUpload=FileUtils.createSingleFileUploadForm(new DataArrayListener() {
 			
 			@Override
 			public void uploaded(File file, Uint8Array array) {
-				negativeZipLabel.setText(file.getFileName());
+				boolean allowRandom=allowRandomCheck.getValue();
+				negativeControler.setAllowRandom(allowRandom);
+				negativeControler.setDetectorOption(detectorPreset.getValue());
+				
+				if(!allowRandom){
+					createRandomVolCheck.setValue(false,true);//this negativeControler off
+					createRandomVolCheck.setEnabled(false);
+				}
+				
 				negativeControler.loadNegativeZipNoWorker(file,array,detectWidthBox.getValue(),detectHeightBox.getValue());
+				String name=file.getFileName();
+				if(!negativeControler.isAllowRandom()){
+					name+="(no random)";
+				}
+				negativeZipLabel.setText(name);
+				
+				
 				//negativeControler.loadNegativeZip(file,array,detectWidthBox.getValue(),detectHeightBox.getValue());
 			}
 		});
@@ -562,6 +606,8 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		negativeZipLabel=new Label("NOT SELECTED NEED SELECT TO LEARN");
 		negativePanel.add(negativeZipLabel);
 		negativePanel.add(negativeUpload);
+		negativePanel.add(allowRandomCheck);
+		negativePanel.add(detectorPreset);
 		
 		
 		mainPanel.add(createFullAutoControls());
@@ -1379,14 +1425,105 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		return convertedVol;
 	}
 	
-	private Map<String,List<Rect>> testMap=new HashMap<String, List<Rect>>();
+	private List<HaarRect> rectToHaarRect(List<Rect> rects){
+		if(rects==null){
+			return null;
+		}
+		List<HaarRect> result=Lists.newArrayList();
+		for(Rect rect:rects){
+			result.add( HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));
+		}
+		return result;
+	}
+	
+	private Map<String,List<Rect2>> testMap=new HashMap<String, List<Rect2>>();
+	private Map<String,List<Rect>> testMap2=new HashMap<String, List<Rect>>();
+	
+	private JsHash tmpHash=JavaScriptObject.createObject().cast();
+	private static class JsHash extends JavaScriptObject{
+		protected JsHash(){
+			
+		}
+		public final native  void put(String name, JsArray<JsArrayNumber> rects) /*-{
+		this[name]=rects;
+	}-*/;
+		
+		public final native  JsArray<HaarRect> get(String name) /*-{
+		return this[name];
+	}-*/;
+		
+		public final native  int size() /*-{
+		return $wnd.Object.keys(this).length;
+	}-*/;
+		
+	}
+	public class Rect2{
+		 int x;
+		 int y;
+		 int width;
+		 public int getX() {
+			return x;
+		}
+		public void setX(int x) {
+			this.x = x;
+		}
+		public int getY() {
+			return y;
+		}
+		public void setY(int y) {
+			this.y = y;
+		}
+		public int getWidth() {
+			return width;
+		}
+		public void setWidth(int width) {
+			this.width = width;
+		}
+		public int getHeight() {
+			return height;
+		}
+		public void setHeight(int height) {
+			this.height = height;
+		}
+		int height;
+		 public Rect2(){
+			 
+		 }
+		public Rect2(int x, int y, int width, int height) {
+			super();
+			this.x = x;
+			this.y = y;
+			this.width = width;
+			this.height = height;
+		}
+
+	}
 	private void doTest1(){
 		
-		List<Rect> rects=RectGenerator.generateRect(640,480, 4, 1.4,32,16,1.0);
-		LogUtils.log("rect-count:"+rects.size());
+		
+		
 		int index=testMap.size();
-		for(int i=0;i<1000;i++){
-			testMap.put(""+index, ListUtils.shuffle(rects));
+		for(int i=0;i<100;i++){
+			//JsArray<HaarRect> rects=RectGenerator.generateHaarRect(1200,1200, 4, 1.4,32,16,1.0);
+			List<Rect> rects=RectGenerator.generateRect(1200,1200, 4, 1.4,32,16,1.0);
+			
+			if(i==0){
+				LogUtils.log(rects.size());
+			}
+			
+			//using array version
+			List<Rect2> ints=Lists.newArrayList();
+			for(int j=0;j<rects.size();j++){
+				Rect2 r2=new Rect2();
+				ints.add(r2);
+				r2.x=(short) rects.get(j).getX();
+				r2.y=(short) rects.get(j).getY();
+				r2.width=(short) rects.get(j).getWidth();
+				r2.height=(short) rects.get(j).getHeight();
+			}
+			
+			
+			testMap.put("1414905774646.webp"+index, ints);
 			index++;
 		}
 		LogUtils.log("map-size:"+testMap.size());
@@ -3993,12 +4130,16 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 				Canvas grayscale=CanvasUtils.convertToGrayScale(sharedCanvas, null);
 				final ImageData grayScaleImageData=ImageDataUtils.copyFrom(grayscale);
 				
-				List<Rect> rects=negativeControler.loadRect(element.get(), data.getFileName(),minW,minH);
+				List<IntegerRect> rects=negativeControler.loadRect(element.get(), data.getFileName(),minW,minH);
+				
+				if(!negativeControler.isAllowRandom()){
+					negativeControler.clearRect(data.getFileName());//don't store
+				}
 				
 				//convert to rects TODO method? #HaarRect.from(List<Rect)
 				JsArray<HaarRect> rectArray= JsArray.createArray().cast();
 				for(int i=0;i<rects.size();i++){
-					Rect rect=rects.get(i);
+					IntegerRect rect=rects.get(i);
 					rectArray.push(HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));
 				}
 				
@@ -4206,6 +4347,19 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 		return ConvnetJs.createVol(1, 1, 8*lbpDataSplit*lbpDataSplit, 0);
 	}
 	
+	public static class DetectorOption{
+		String name;
+		int stepPosition;
+		public DetectorOption(String name,int stepSize, double stepScale, double initialScale) {
+			super();
+			this.name=name;
+			this.stepPosition = stepSize;
+			this.stepScale = stepScale;
+			this.startScale = initialScale;
+		}
+		double stepScale;
+		double startScale;
+	}
 	
 	/**
 	 * 
