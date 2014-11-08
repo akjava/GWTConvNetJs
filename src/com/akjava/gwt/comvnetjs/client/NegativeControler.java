@@ -233,7 +233,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		
 		String totalRectLabel=totalRect==-1?"unknown":String.valueOf(totalRect);
 
-		return "negative-info:remain "+totalRectLabel+" rects of "+negativesZip.getDatas().size()+" images"+" rect-generate-time:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms";
+		return "negative-info:remain "+totalRectLabel+" rects of "+negativesZip.getDatas().size()+" images"+" unused("+unusedDatas.size()+")"+" rect-generate-time:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms";
 	}
 	private boolean allowRandom;
 	
@@ -402,7 +402,12 @@ public int countRects(int minW,int minH){
 		
 	
 	}
+	private List<CVImageData> unusedDatas=Lists.newArrayList();
 	
+	public List<CVImageData> getUnusedDatas() {
+		return unusedDatas;
+	}
+
 	public void loadNegativeZipNoWorker(File file, Uint8Array array,final int minW,final int minH) {
 		rectsMap.clear();//zip replaced;
 		//negativeZipLabel.setText(file.getFileName());
@@ -440,6 +445,7 @@ public int countRects(int minW,int minH){
 		}else{
 		
 		
+		unusedDatas.clear();
 		
 		final List<CVImageData> datas=Lists.newArrayList(negativesZip.getDatas());
 		
@@ -450,15 +456,16 @@ public int countRects(int minW,int minH){
 		progress.show();
 		AsyncMultiCaller<CVImageData> caller=new AsyncMultiCaller<CVImageData>(datas) {
 			ImageElement imageElement;//too much create?
-			int max=10000000;//million
+			int max=20000000;//million
 			int total=0;
-			List<CVImageData> removeLater=Lists.newArrayList();
+		//	List<CVImageData> removeLater=Lists.newArrayList();
 			@Override
 			public void doFinally(boolean cancelled) {
 				progress.hide();
 				
 				//can't use because of can't create rect lack of memory.
-				negativesZip.getDatas().removeAll(removeLater);
+				
+				negativesZip.getDatas().removeAll(unusedDatas);
 				
 				//TODO support recover later.maybe when image remove
 				
@@ -468,14 +475,14 @@ public int countRects(int minW,int minH){
 				LogUtils.log(getNegativeInfo());
 				LogUtils.log("load negatives-image-only from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
 			
-				//TODO alert if skipped
+				
 			}
 
 			@Override
 			public void execAsync(CVImageData data) {
 				if(total>max){
-					removeLater.add(data);
-					LogUtils.log(max+" max-rect reached.skipped "+data.getFileName());
+					unusedDatas.add(data);
+					//LogUtils.log(max+" max-rect reached.skipped "+data.getFileName());
 				}else{
 			//	LogUtils.log("start-execAsync:"+data.getFileName());
 				JSFile file=negativesZip.getZip().getFile(data.getFileName());
@@ -499,7 +506,7 @@ public int countRects(int minW,int minH){
 						int size=rectsMap.get(data.getFileName()).size();
 						
 						total+=size;
-						LogUtils.log("size:"+size+",total="+total);
+						//LogUtils.log("size:"+size+",total="+total);
 					}
 					
 					//loadRect(imageElement, data.getFileName(), minW, minH);
@@ -681,12 +688,14 @@ public int countRects(int minW,int minH){
 			List<IntegerRect> rects=loadRect(lastImageData.getWidth(),lastImageData.getHeight(),pdata.getFileName(),detectWidth,detectHeight);
 			IntegerRect rect=rects.remove(0);
 			if(rects.size()==0){
-					negativesZip.getDatas().remove(pdata);//remove permanently,if neee use,do refrash page
+				remove(pdata);
+					//remove permanently,if neee use,do refrash page
 					if(negativesZip.getType()!=CVImageZip.POSITIVES){
 						LogUtils.log("rect is empty removed:"+pdata.getFileName()+","+getNegativeInfo());
 					}
 			
-					clearRect(pdata.getFileName());
+					
+					
 			}
 			//dtime3+=watch3.elapsed(TimeUnit.MILLISECONDS);
 			
@@ -707,6 +716,16 @@ public int countRects(int minW,int minH){
 		}
 		private ImageData lastImageData;
 		private CVImageData lastData;
+		
+		public void remove(CVImageData data){
+			negativesZip.getDatas().remove(data);
+			clearRect(data.getFileName());
+			if(unusedDatas.size()>0){
+				CVImageData unused=unusedDatas.remove(0);
+				negativesZip.getDatas().add(unused);
+				LogUtils.log("move from unused:"+unused.getFileName());
+				}
+		}
 	
 		private int getRandom(int min,int max){
 			return (int) (min+(Math.random()*(max-min)));

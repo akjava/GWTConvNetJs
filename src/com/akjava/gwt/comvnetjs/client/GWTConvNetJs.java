@@ -607,6 +607,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		negativePanel.add(negativeZipLabel);
 		negativePanel.add(negativeUpload);
 		negativePanel.add(allowRandomCheck);
+		negativePanel.add(new Label("making rect"));
 		negativePanel.add(detectorPreset);
 		
 		
@@ -799,7 +800,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		
 		firstPanel.add(new Label("maxLerning:"));
 		final IntegerBox maxLearningBox=new IntegerBox();
-		maxLearningBox.setValue(2000);
+		maxLearningBox.setValue(500);
 		maxLearningBox.setWidth("80px");
 		firstPanel.add(maxLearningBox);
 		
@@ -872,7 +873,8 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		
 		secondPanel.add(new Label("auto off random on create-cascade level at "));
 		autoRandomOffStage = new ToStringValueListBox<Integer>(offValues);
-		autoRandomOffStage.setValue(6);
+		//guess stage 9 take 4-5 hours
+		autoRandomOffStage.setValue(10);//
 		secondPanel.add(autoRandomOffStage);
 		
 
@@ -977,6 +979,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 				
 			}
 		};
+		startBt.setWidth("300px");
 		buttons.add(startBt);
 		
 		Button test1Cancel=new Button("Cancel",new ClickHandler() {
@@ -2300,7 +2303,7 @@ charged searchpassedImage
 					droppedList.add(jsonText);
 				}
 		
-				LogUtils.log("dropped:");
+				LogUtils.log("dropped-images:"+droppedList.size());
 				for(String dropped:droppedList){
 					LogUtils.log(dropped);
 				}	
@@ -4044,7 +4047,10 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 		
 		final String json=toJson(parents);
 		
+		
+		
 		final List<CVImageData> negatives=Lists.newArrayList(negativesZip.getDatas());
+		negatives.addAll(negativeControler.getUnusedDatas());//maybe added
 		
 		searchPassedImageWorker = new WorkerPool(searchPassedImageWorkerSize,"/negative/worker.js") {
 			int extracted;
@@ -4096,8 +4102,8 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 					}
 				
 				
-				
-					negativesZip.getDatas().remove(negativeData);//consumed;
+					negativeControler.remove(negativeData);//however not recover
+					//negativesZip.getDatas().remove(negativeData);//consumed;
 				
 					if(hasEnoughSearchPassedImage(isInitial,size)){
 					LogUtils.log("searchPassedImageWithWorker-hasEnoughSearchPassedImage:");
