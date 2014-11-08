@@ -233,7 +233,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 		
 		String totalRectLabel=totalRect==-1?"unknown":String.valueOf(totalRect);
 
-		return "negative-info:remain "+totalRectLabel+" rects of "+negativesZip.getDatas().size()+" images"+" unused("+unusedDatas.size()+")"+" rect-generate-time:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms";
+		return "negative-info:remain "+totalRectLabel+" rects of "+negativesZip.getDatas().size()+" images"+" unused("+unusedDatas.size()+")"+"cached("+negativesZip.countCachedImageDataUrls()+")"+" rect-generate-time:"+watch.elapsed(TimeUnit.MILLISECONDS)+"ms";
 	}
 	private boolean allowRandom;
 	
@@ -264,10 +264,12 @@ public List<IntegerRect> loadRect(int w,int h,String fileName,int minW,int minH)
 		if(rects==null){
 			
 			//double min_scale=1.2;//no need really small pixel
-			
-			rects=RectGenerator.generateIntegerRect(w,h, detectorOption.stepPosition, detectorOption.startScale,minW,minH,detectorOption.startScale);
+			//LogUtils.log("start generate:"+detectorOption);
+			rects=RectGenerator.generateIntegerRect(w,h, detectorOption.stepPosition, detectorOption.stepScale,minW,minH,detectorOption.startScale);
+			//LogUtils.log("generated:"+rects.size());
 			//rects=generateRect(image, 2, 1.2);//this is too much make rects
 			rectsMap.put(fileName, ListUtils.shuffle(rects));
+			//LogUtils.log("putted:");
 		}
 		return rects;
 	}
@@ -461,6 +463,7 @@ public int countRects(int minW,int minH){
 		if(!useCache){
 			LogUtils.log(getNegativeInfo());
 			LogUtils.log("load negatives-image-only from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+			return;
 		}
 		
 		//no need shuffle
@@ -470,7 +473,7 @@ public int countRects(int minW,int minH){
 		progress.show();
 		AsyncMultiCaller<CVImageData> caller=new AsyncMultiCaller<CVImageData>(datas) {
 			ImageElement imageElement;//too much create?
-			int max=20000000;//million
+			int max=10000000;//million
 			int total=0;
 		//	List<CVImageData> removeLater=Lists.newArrayList();
 			@Override

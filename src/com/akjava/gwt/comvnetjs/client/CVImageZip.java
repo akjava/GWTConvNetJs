@@ -105,6 +105,10 @@ public Optional<ImageElement> getImageElement(CVImageData data){
 	}
 	return Optional.of(image);
 }
+
+public int countCachedImageDataUrls(){
+	return cachedImageDataUrls.size();
+}
 	
 //for future use,change dataUrl base,now store dataUrl on cache to reduce memory usage
 protected String doFilter(String dataUrl) {

@@ -511,6 +511,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		});
 		searchVolWorkerSizeBox.setValue(2,true);
 		
+		volOptions.add(new Label("search worker-size:"));
 		volOptions.add(searchVolWorkerSizeBox);
 		
 		
@@ -1508,33 +1509,37 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 	}
 	private void doTest1(){
 		
+		Timer timer=new Timer(){
+			boolean doing;
+			@Override
+			public void run() {
+				if(doing){
+					return;
+				}
+				doing=true;
+				
+				LogUtils.log(negativeControler.getNegativeInfo());
+				int size=negativeControler.getNegativesZip().getDatas().size();
+				//LogUtils.log("size:"+size);
+				if(size==0){
+					cancel();
+					
+					return;
+				}
+				CVImageData data=negativeControler.getNegativesZip().getDatas().get(0);
+				//LogUtils.log(data.getFileName());
+				for(ImageElement image:negativeControler.getNegativesZip().getImageElement(data).asSet()){
+					//LogUtils.log("load:"+image.getWidth()+","+image.getHeight());
+					negativeControler.loadRect(image, data.getFileName(), 32, 16);
+				};
+				//LogUtils.log("remove");
+				negativeControler.remove(data);
+				doing=false;
+			}
+		};
+		timer.scheduleRepeating(200);
 		
 		
-		int index=testMap.size();
-		for(int i=0;i<100;i++){
-			//JsArray<HaarRect> rects=RectGenerator.generateHaarRect(1200,1200, 4, 1.4,32,16,1.0);
-			List<Rect> rects=RectGenerator.generateRect(1200,1200, 4, 1.4,32,16,1.0);
-			
-			if(i==0){
-				LogUtils.log(rects.size());
-			}
-			
-			//using array version
-			List<Rect2> ints=Lists.newArrayList();
-			for(int j=0;j<rects.size();j++){
-				Rect2 r2=new Rect2();
-				ints.add(r2);
-				r2.x=(short) rects.get(j).getX();
-				r2.y=(short) rects.get(j).getY();
-				r2.width=(short) rects.get(j).getWidth();
-				r2.height=(short) rects.get(j).getHeight();
-			}
-			
-			
-			testMap.put("1414905774646.webp"+index, ints);
-			index++;
-		}
-		LogUtils.log("map-size:"+testMap.size());
 		if(true){
 			return;
 		}
@@ -4370,6 +4375,10 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 		}
 		double stepScale;
 		double startScale;
+		
+		public String toString(){
+			return name+","+stepPosition+","+stepScale+","+startScale;
+		}
 	}
 	
 	/**
