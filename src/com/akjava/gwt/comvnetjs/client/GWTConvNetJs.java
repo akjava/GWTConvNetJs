@@ -570,6 +570,9 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		detectorPreset.setAcceptableValues(detectorPresets);
 		
 		
+		final CheckBox useCacheCheck=new CheckBox("use cache");
+		useCacheCheck.setValue(true);
+		
 		final CheckBox allowRandomCheck=new CheckBox("allow random");
 		allowRandomCheck.setValue(true);
 		//around max 1GB memory,means 60MB images 
@@ -580,6 +583,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 				boolean allowRandom=allowRandomCheck.getValue();
 				negativeControler.setAllowRandom(allowRandom);
 				negativeControler.setDetectorOption(detectorPreset.getValue());
+				negativeControler.setUseCache(useCacheCheck.getValue());
 				
 				if(!allowRandom){
 					createRandomVolCheck.setValue(false,true);//this negativeControler off
@@ -606,7 +610,8 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		negativeZipLabel=new Label("NOT SELECTED NEED SELECT TO LEARN");
 		negativePanel.add(negativeZipLabel);
 		negativePanel.add(negativeUpload);
-		negativePanel.add(allowRandomCheck);
+		negativePanel.add(useCacheCheck);
+		//negativePanel.add(allowRandomCheck);//maybe no need anymore,because when load many images,too much consume memory
 		negativePanel.add(new Label("making rect"));
 		negativePanel.add(detectorPreset);
 		

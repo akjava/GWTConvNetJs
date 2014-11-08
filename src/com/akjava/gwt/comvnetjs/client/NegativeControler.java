@@ -319,7 +319,7 @@ public void generateRect(ImageElement image, String fileName,int minW,int minH) 
 	}
 
 public int countRects(int minW,int minH){
-	if(!allowRandom){
+	if(!allowRandom || !useCache){
 		return -1;
 	}
 	int totalRect=0;
@@ -407,6 +407,15 @@ public int countRects(int minW,int minH){
 	public List<CVImageData> getUnusedDatas() {
 		return unusedDatas;
 	}
+	private boolean useCache=true;
+
+	public boolean isUseCache() {
+		return useCache;
+	}
+
+	public void setUseCache(boolean useCache) {
+		this.useCache = useCache;
+	}
 
 	public void loadNegativeZipNoWorker(File file, Uint8Array array,final int minW,final int minH) {
 		rectsMap.clear();//zip replaced;
@@ -448,6 +457,11 @@ public int countRects(int minW,int minH){
 		unusedDatas.clear();
 		
 		final List<CVImageData> datas=Lists.newArrayList(negativesZip.getDatas());
+		
+		if(!useCache){
+			LogUtils.log(getNegativeInfo());
+			LogUtils.log("load negatives-image-only from "+negativesZip.getName()+" items="+negativesZip.size()+" time="+watch.elapsed(TimeUnit.MILLISECONDS)+"ms");
+		}
 		
 		//no need shuffle
 		//ListUtils.shuffle(datas);//possile some data is wrong
@@ -719,6 +733,7 @@ public int countRects(int minW,int minH){
 		
 		public void remove(CVImageData data){
 			negativesZip.getDatas().remove(data);
+			negativesZip.removeCache(data.getFileName());
 			clearRect(data.getFileName());
 			if(unusedDatas.size()>0){
 				CVImageData unused=unusedDatas.remove(0);

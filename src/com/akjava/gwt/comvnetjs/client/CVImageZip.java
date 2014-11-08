@@ -185,6 +185,9 @@ public CVImageData get(int index){
 	public void putCache(String name,String dataUrl){
 		cachedImageDataUrls.put(name, dataUrl);
 	}
+	public void removeCache(String name){
+		cachedImageDataUrls.remove(name);
+	}
 	
 	private boolean isImageFile(String name){
 		name=name.toLowerCase();
