@@ -705,7 +705,7 @@ public int countRects(int minW,int minH){
 			List<IntegerRect> rects=loadRect(lastImageData.getWidth(),lastImageData.getHeight(),pdata.getFileName(),detectWidth,detectHeight);
 			IntegerRect rect=rects.remove(0);
 			if(rects.size()==0){
-				remove(pdata);
+				removeAndReplace(pdata);
 					//remove permanently,if neee use,do refrash page
 					if(negativesZip.getType()!=CVImageZip.POSITIVES){
 						LogUtils.log("rect is empty removed:"+pdata.getFileName()+","+getNegativeInfo());
@@ -734,7 +734,7 @@ public int countRects(int minW,int minH){
 		private ImageData lastImageData;
 		private CVImageData lastData;
 		
-		public void remove(CVImageData data){
+		public void removeAndReplace(CVImageData data){
 			negativesZip.getDatas().remove(data);
 			negativesZip.removeCache(data.getFileName());
 			clearRect(data.getFileName());

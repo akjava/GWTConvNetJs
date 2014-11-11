@@ -774,7 +774,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		}
 		final ToStringValueListBox<Integer> maxStageBox=new ToStringValueListBox<Integer>(maxStageValue);
 		firstPanel.add(maxStageBox);
-		maxStageBox.setValue(10);
+		maxStageBox.setValue(15);//basically no need auto-stop
 		
 		firstPanel.add(new Label("MatchRate:"));
 		final DoubleBox matchRateBox=new DoubleBox();
@@ -1533,7 +1533,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 					negativeControler.loadRect(image, data.getFileName(), 32, 16);
 				};
 				//LogUtils.log("remove");
-				negativeControler.remove(data);
+				negativeControler.removeAndReplace(data);
 				doing=false;
 			}
 		};
@@ -4096,7 +4096,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 				JsArray<NegativeResult> rects=Worker2.getDataAsJavaScriptObject(event).cast();
 				//LogUtils.log("searchPassedImageWithWorker-extract:"+name+",rects="+rects.length());
 				if(rects.length()==0){
-					negativesZip.getDatas().remove(negativeData);//consumed;
+					negativeControler.removeAndReplace(negativeData);
 					return;
 				}
 				synchronized(this){//possible return same time
@@ -4112,7 +4112,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 					}
 				
 				
-					negativeControler.remove(negativeData);//however not recover
+					negativeControler.removeAndReplace(negativeData);//however not recover
 					//negativesZip.getDatas().remove(negativeData);//consumed;
 				
 					if(hasEnoughSearchPassedImage(isInitial,size)){
