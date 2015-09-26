@@ -36,6 +36,8 @@ import com.akjava.gwt.lib.client.Base64Utils;
 import com.akjava.gwt.lib.client.BrowserUtils;
 import com.akjava.gwt.lib.client.BrowserUtils.LoadBinaryListener;
 import com.akjava.gwt.lib.client.CanvasUtils;
+import com.akjava.gwt.lib.client.ImageElementListener;
+import com.akjava.gwt.lib.client.ImageElementLoader;
 import com.akjava.gwt.lib.client.ImageElementUtils;
 import com.akjava.gwt.lib.client.JavaScriptUtils;
 import com.akjava.gwt.lib.client.LogUtils;
@@ -89,6 +91,7 @@ import com.google.gwt.editor.client.ValueAwareEditor;
 import com.google.gwt.editor.client.adapters.SimpleEditor;
 import com.google.gwt.event.dom.client.ClickEvent;
 import com.google.gwt.event.dom.client.ClickHandler;
+import com.google.gwt.event.dom.client.ErrorEvent;
 import com.google.gwt.event.logical.shared.ValueChangeEvent;
 import com.google.gwt.event.logical.shared.ValueChangeHandler;
 import com.google.gwt.http.client.Request;
@@ -1508,6 +1511,90 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 
 	}
 	private void doTest1(){
+		/*
+		//not so slow than expected
+		int[][] v=new int[10000][1000];
+		Stopwatch watch=Stopwatch.createStarted();
+		for(int i=0;i<v.length;i++){
+			for(int j=0;j<v[i].length;j++){
+				int value=v[i][j];
+				v[i][j]=100;
+			}
+		}
+		LogUtils.log("access-time:"+watch.elapsed(TimeUnit.MILLISECONDS));
+		
+		
+		//10% first?
+		Uint8Array array=Uint8Array.createUint8(10000*1000);
+		Stopwatch watch2=Stopwatch.createStarted();
+		for(int i=0;i<array.length();i++){
+			int value=array.get(i);
+			array.set(i, 100);
+		}
+		LogUtils.log("uint-access-time:"+watch2.elapsed(TimeUnit.MILLISECONDS));
+		if(true){
+			return;
+		}
+		*/
+		new ImageElementLoader().load("lena1.png", new ImageElementListener() {
+			
+			@Override
+			public void onLoad(ImageElement element) {
+				ImageData imageData=ImageDataUtils.create(null, element);
+				int s=32;
+				Stopwatch watch1=Stopwatch.createUnstarted();
+				Stopwatch watch2=Stopwatch.createUnstarted();
+				Stopwatch watch3=Stopwatch.createUnstarted();
+				
+				Stopwatch watch4=Stopwatch.createUnstarted();
+				int[] resizedInt=null;
+				
+				for(int i=0;i<100;i++){//red-only 51ms,full,181ms
+					for(int j=0;j<100;j++){
+					watch1.start();
+					Uint8ArrayNative resized=ResizeUtils.resizeBilinearRedOnly(imageData,i,j, s, s, s,s);
+					watch1.stop();
+					
+					
+					watch2.start();
+					int[] binaryPattern=GWTConvNetJs.createLBPDepthFromUint8ArrayPacked(resized, false);
+					watch2.stop();
+					
+					
+					//i wonder int is much fast than uint8?
+					if(resizedInt==null){
+						resizedInt=new int[resized.length()];//init realy consume time
+					}
+					for(int k=0;k<resizedInt.length;k++){
+						resizedInt[i]=resized.get(k);
+					}
+					
+					watch4.start();
+					int[] binaryPattern2=GWTConvNetJs.createLBPDepthFromUint8ArrayPacked(resizedInt, false);
+					watch4.stop();
+					
+					watch3.start();
+					Vol vol=GWTConvNetJs.createVolFromIndexes(binaryPattern,GWTConvNetJs.parseMaxLBPValue());
+					watch3.stop();
+					}
+				}
+				LogUtils.log("crop-time:"+watch1.elapsed(TimeUnit.MILLISECONDS));
+				LogUtils.log("lbp-time:"+watch2.elapsed(TimeUnit.MILLISECONDS));
+				LogUtils.log("lbp-int-time:"+watch4.elapsed(TimeUnit.MILLISECONDS));
+				LogUtils.log("vol-time:"+watch3.elapsed(TimeUnit.MILLISECONDS));
+			}
+			
+			@Override
+			public void onError(String url, ErrorEvent event) {
+				// TODO Auto-generated method stub
+				
+			}
+		});
+		
+		if(true){
+			return;
+		}
+		
 		
 		Timer timer=new Timer(){
 			boolean doing;
@@ -1540,9 +1627,7 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		timer.scheduleRepeating(200);
 		
 		
-		if(true){
-			return;
-		}
+		
 		
 	//	dtime=0;dtime1=0;dtime2=0;dtime3=0;
 		/*
@@ -4417,6 +4502,26 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 				for(int y=0;y<ints.length;y++){
 					int index=(y*ints[0].length+x);
 					ints[y][x]=array.get(index);//red
+				}
+			}
+		}
+		
+		//int[][] ints=byteDataIntConverter.convert(imageData); //convert color image to grayscale data
+		//int[][] data=lbpConverter.convert(ints);
+		int[] retInt=lbpConverter.dataToBinaryPattern(ints,lbpDataSplit,lbpDataSplit, edgeSize, edgeSize);
+		return retInt;
+	}
+	
+	public static int[] createLBPDepthFromUint8ArrayPacked(int[] array,boolean color){
+		int[][] ints=null;
+		if(color){
+			//TODO
+		}else{
+			ints=new int[netHeight+edgeSize][netWidth+edgeSize];
+			for(int x=0;x<ints[0].length;x++){
+				for(int y=0;y<ints.length;y++){
+					int index=(y*ints[0].length+x);
+					ints[y][x]=array[index];//red only
 				}
 			}
 		}

@@ -85,7 +85,7 @@ public Optional<ImageElement> getImageElement(CVImageData data){
 		String extension=FileNames.getExtension(data.getFileName());
 		FileType type=FileType.getFileTypeByExtension(extension);//need to know jpeg or png
 		//Stopwatch watch=Stopwatch.createStarted();
-		imgFile.asUint8Array();
+		//imgFile.asUint8Array();
 		//uinttime+=watch.elapsed(TimeUnit.MILLISECONDS);watch.reset();watch.start();
 		
 		String dataUrl=Base64Utils.toDataUrl(type.getMimeType(),imgFile.asUint8Array());//should use cache 300MB etc
