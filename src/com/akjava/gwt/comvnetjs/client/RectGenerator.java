@@ -3,8 +3,8 @@ package com.akjava.gwt.comvnetjs.client;
 import java.util.List;
 
 import com.akjava.gwt.comvnetjs.client.worker.HaarRect;
-import com.akjava.lib.common.graphics.IntegerRect;
-import com.akjava.lib.common.graphics.Rect;
+import com.akjava.lib.common.graphics.SimpleRect;
+import com.akjava.lib.common.graphics.IntRect;
 import com.google.common.collect.Lists;
 import com.google.gwt.core.client.JavaScriptObject;
 import com.google.gwt.core.client.JsArray;
@@ -34,7 +34,7 @@ public class RectGenerator {
         double step_x = (0.5 * scale + 1.5)*stepScale;//usually stepScale use for reduce detect rect size.js is really slow than C-lang
         double step_y = step_x;
         
-        Rect sharedRect=new Rect(0,0,clipWidth,clipHeight);
+        IntRect sharedRect=new IntRect(0,0,clipWidth,clipHeight);
         int endX=imageW-clipWidth;
         int endY=imageH-clipHeight;
         
@@ -52,9 +52,9 @@ public class RectGenerator {
        
 	}
 	
-	public static List<Rect> generateRect(int imageW,int imageH,int stepScale,double scale_factor,int minW,int minH,double min_scale) {
+	public static List<IntRect> generateRect(int imageW,int imageH,int stepScale,double scale_factor,int minW,int minH,double min_scale) {
 		//Stopwatch watch=Stopwatch.createStarted();
-		List<Rect> rects=Lists.newArrayList();
+		List<IntRect> rects=Lists.newArrayList();
 		
 		
 		
@@ -69,13 +69,13 @@ public class RectGenerator {
 		
 		return rects;
 	}
-	public static void generateRect(int minW,int minH,int stepScale,double scale,List<Rect> rects,int imageW,int imageH) {
+	public static void generateRect(int minW,int minH,int stepScale,double scale,List<IntRect> rects,int imageW,int imageH) {
 		int clipWidth=(int) (minW*scale);
 		int clipHeight=(int)(minH*scale);
         double step_x = (0.5 * scale + 1.5)*stepScale;//usually stepScale use for reduce detect rect size.js is really slow than C-lang
         double step_y = step_x;
         
-        Rect sharedRect=new Rect(0,0,clipWidth,clipHeight);
+        IntRect sharedRect=new IntRect(0,0,clipWidth,clipHeight);
         int endX=imageW-clipWidth;
         int endY=imageH-clipHeight;
         
@@ -91,9 +91,9 @@ public class RectGenerator {
         }
 	}
 	
-	public static List<IntegerRect> generateIntegerRect(int imageW,int imageH,int stepScale,double scale_factor,int minW,int minH,double min_scale) {
+	public static List<SimpleRect> generateIntegerRect(int imageW,int imageH,int stepScale,double scale_factor,int minW,int minH,double min_scale) {
 		//Stopwatch watch=Stopwatch.createStarted();
-		List<IntegerRect> rects=Lists.newArrayList();
+		List<SimpleRect> rects=Lists.newArrayList();
 		
 		
 		
@@ -108,7 +108,7 @@ public class RectGenerator {
 		
 		return rects;
 	}
-	public static void generateIntegerRect(int minW,int minH,int stepScale,double scale,List<IntegerRect> rects,int imageW,int imageH) {
+	public static void generateIntegerRect(int minW,int minH,int stepScale,double scale,List<SimpleRect> rects,int imageW,int imageH) {
 		int clipWidth=(int) (minW*scale);
 		int clipHeight=(int)(minH*scale);
         double step_x = (0.5 * scale + 1.5)*stepScale;//usually stepScale use for reduce detect rect size.js is really slow than C-lang
@@ -123,7 +123,7 @@ public class RectGenerator {
         		int dx=(int) x;
         		int dy=(int)y;
         		
-        		rects.add(new IntegerRect(dx, dy, clipWidth, clipHeight));
+        		rects.add(new SimpleRect(dx, dy, clipWidth, clipHeight));
         	}
         }
 	}

@@ -1,6 +1,6 @@
 package com.akjava.gwt.comvnetjs.client.worker;
 
-import com.akjava.lib.common.graphics.Rect;
+import com.akjava.lib.common.graphics.IntRect;
 import com.google.gwt.core.client.JavaScriptObject;
 
 public class HaarRect extends JavaScriptObject{
@@ -33,8 +33,8 @@ public   final native int getHeight() /*-{
 	return this.height;
 }-*/;
 
-public final Rect toRect(){
-	return new Rect(getX(),getY(),getWidth(),getHeight());
+public final IntRect toRect(){
+	return new IntRect(getX(),getY(),getWidth(),getHeight());
 }
 
 

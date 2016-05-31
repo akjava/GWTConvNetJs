@@ -51,7 +51,21 @@ public class ConvnetJs {
 	return net;
     }-*/;
 	
-	/* input value better -1 - 1 */
+	
+	public static  final native Net createTwoLayerNetworkDemo(int x,int y,int depth,int classes) /*-{
+	var layer_defs = [];
+	layer_defs.push({type:'input', out_sx:x, out_sy:y, out_depth:depth});
+	layer_defs.push({type:'fc',num_neurons:6});
+	layer_defs.push({type:'fc',num_neurons:2});
+	layer_defs.push({type:'softmax', num_classes:classes});
+	
+	var net = new $wnd.convnetjs.Net();
+	net.makeLayers(layer_defs);
+	
+	return net;
+    }-*/;
+	
+	/* input value better -1.0 - 1.0 */
 	public static  final native Net createRawDepathNet(int x,int y,int depth,int neurons,int classes) /*-{
 	var layer_defs = [];
 	layer_defs.push({type:'input', out_sx:x, out_sy:y, out_depth:depth});
@@ -64,6 +78,8 @@ public class ConvnetJs {
 	
 	return net;
     }-*/;
+	
+	
 	
 	
 	/* input value better -1 - 1 */
@@ -157,5 +173,8 @@ public class ConvnetJs {
 	 }-*/;
 	
 
+	public static  final native Trainer createTrainer2(Net net) /*-{
+	return new $wnd.convnetjs.SGDTrainer(net, {learning_rate:0.01, momentum:0.1, batch_size:10, l2_decay:0.001});
+	 }-*/;
 
 }

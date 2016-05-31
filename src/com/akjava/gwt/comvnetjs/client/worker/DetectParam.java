@@ -2,7 +2,7 @@ package com.akjava.gwt.comvnetjs.client.worker;
 
 import java.util.List;
 
-import com.akjava.lib.common.graphics.Rect;
+import com.akjava.lib.common.graphics.IntRect;
 import com.google.gwt.canvas.dom.client.ImageData;
 import com.google.gwt.core.client.JavaScriptObject;
 import com.google.gwt.core.client.JsArray;
@@ -13,7 +13,7 @@ public  class DetectParam extends JavaScriptObject{
 	protected DetectParam(){}
 
 	
-	public static DetectParam create(String json,ImageData imageData,List<Rect> rects){
+	public static DetectParam create(String json,ImageData imageData,List<IntRect> rects){
 		DetectParam param=createObject().cast();
 		param.setJson(json);
 		
@@ -21,7 +21,7 @@ public  class DetectParam extends JavaScriptObject{
 		param.setImageData(imageData);
 		
 		JsArray<HaarRect> rectArray=createArray().cast();
-		for(Rect rect:rects){
+		for(IntRect rect:rects){
 			rectArray.push(HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));
 		}
 		param.setRects(rectArray);

@@ -29,8 +29,8 @@ import com.akjava.gwt.webworker.client.WorkerPool;
 import com.akjava.gwt.webworker.client.WorkerPool.Uint8WorkerPoolData;
 import com.akjava.gwt.webworker.client.WorkerPool.WorkerPoolData;
 import com.akjava.gwt.webworker.client.WorkerPoolMultiCaller;
-import com.akjava.lib.common.graphics.IntegerRect;
-import com.akjava.lib.common.graphics.Rect;
+import com.akjava.lib.common.graphics.SimpleRect;
+import com.akjava.lib.common.graphics.IntRect;
 import com.akjava.lib.common.io.FileType;
 import com.akjava.lib.common.utils.ListUtils;
 import com.google.common.base.Optional;
@@ -79,7 +79,7 @@ public class NegativeControler {
 		return negativesZip;
 	}
 	//private Map<String,List<Rect>> rectsMap=new HashMap<String, List<Rect>>();
-	private Map<String,List<IntegerRect>> rectsMap=new HashMap<String, List<IntegerRect>>();
+	private Map<String,List<SimpleRect>> rectsMap=new HashMap<String, List<SimpleRect>>();
 	/**
 	 * @deprecated
 	 */
@@ -117,7 +117,7 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			//has rect
 			for(CVImageData data:negativesZip.getDatas()){
 				if(data.getRects()!=null && data.getRects().size()>0){
-					List<Rect> rects=Lists.newArrayList(data.getRects());
+					List<IntRect> rects=Lists.newArrayList(data.getRects());
 					rectsMap.put(data.getFileName(), ListUtils.shuffle(rects));//put rect directly
 				}else{
 					LogUtils.log("empty rects on negative zip removed:"+data.getFileName());
@@ -252,15 +252,15 @@ BrowserUtils.loadBinaryFile(negativeImageName,new LoadBinaryListener() {
 			int minH=detectHeight.getValue();
 	 */
 	
-	public List<IntegerRect> loadRect(ImageElement image, String fileName,int minW,int minH) {
+	public List<SimpleRect> loadRect(ImageElement image, String fileName,int minW,int minH) {
 		return loadRect(image.getWidth(),image.getHeight(),fileName,minW,minH);
 	}
 	
 	@SuppressWarnings("unchecked")
-public List<IntegerRect> loadRect(int w,int h,String fileName,int minW,int minH) {
+public List<SimpleRect> loadRect(int w,int h,String fileName,int minW,int minH) {
 		//LogUtils.log("load-rect:"+fileName);
 		
-		List<IntegerRect> rects=rectsMap.get(fileName);
+		List<SimpleRect> rects=rectsMap.get(fileName);
 		if(rects==null){
 			
 			//double min_scale=1.2;//no need really small pixel
@@ -296,7 +296,7 @@ public void generateRect(ImageElement image, String fileName,int minW,int minH) 
 			
 			//JsArray<HaarRect> haars=RectGenerator.generateHaarRect(image.getWidth(),image.getHeight(), 8, 1.4,minW,minH,min_scale);
 			
-			List<IntegerRect> rects=RectGenerator.generateIntegerRect(image.getWidth(),image.getHeight(), 4, 1.4,minW,minH,min_scale);
+			List<SimpleRect> rects=RectGenerator.generateIntegerRect(image.getWidth(),image.getHeight(), 4, 1.4,minW,minH,min_scale);
 			
 			
 			//rects=generateRect(image, 2, 1.2);//this is too much make rects
@@ -351,9 +351,9 @@ public int countRects(int minW,int minH){
 				MakeRectResult result=Worker2.getDataAsJavaScriptObject(event).cast();
 				extracted++;
 				
-				List<Rect> rects=Lists.newArrayList();
+				List<IntRect> rects=Lists.newArrayList();
 				for(int i=0;i<result.getRects().length();i++){
-					Rect rect=Rect.fromString(result.getRects().get(i));
+					IntRect rect=IntRect.fromString(result.getRects().get(i));
 					rects.add(rect);
 				}
 				
@@ -439,7 +439,7 @@ public int countRects(int minW,int minH){
 			//has rect
 			for(CVImageData data:negativesZip.getDatas()){
 				if(data.getRects()!=null && data.getRects().size()>0){
-					List<Rect> rects=Lists.newArrayList(data.getRects());
+					List<IntRect> rects=Lists.newArrayList(data.getRects());
 					
 					rectsMap.put(data.getFileName(), ListUtils.shuffle(rects));//put rect directly
 					
@@ -540,23 +540,23 @@ public int countRects(int minW,int minH){
 		
 	}
 	
-	private List<Rect> haarRectToRect(List<HaarRect> rects){
+	private List<IntRect> haarRectToRect(List<HaarRect> rects){
 		if(rects==null){
 			return null;
 		}
-		List<Rect> result=Lists.newArrayList();
+		List<IntRect> result=Lists.newArrayList();
 		for(HaarRect rect:rects){
 			result.add(rect.toRect());
 		}
 		return result;
 	}
 	
-	private List<HaarRect> rectToHaarRect(List<Rect> rects){
+	private List<HaarRect> rectToHaarRect(List<IntRect> rects){
 		if(rects==null){
 			return null;
 		}
 		List<HaarRect> result=Lists.newArrayList();
-		for(Rect rect:rects){
+		for(IntRect rect:rects){
 			result.add( HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));
 		}
 		return result;
@@ -581,7 +581,7 @@ public int countRects(int minW,int minH){
 			//has rect
 			for(CVImageData data:negativesZip.getDatas()){
 				if(data.getRects()!=null && data.getRects().size()>0){
-					List<Rect> rects=Lists.newArrayList(data.getRects());
+					List<IntRect> rects=Lists.newArrayList(data.getRects());
 					rectsMap.put(data.getFileName(), ListUtils.shuffle(rects));//put rect directly
 				}else{
 					LogUtils.log("empty rects on negative zip removed:"+data.getFileName());
@@ -702,8 +702,8 @@ public int countRects(int minW,int minH){
 			//rect must be initialized when load
 			
 			//if not allow random(for reduce memory),generate rect here
-			List<IntegerRect> rects=loadRect(lastImageData.getWidth(),lastImageData.getHeight(),pdata.getFileName(),detectWidth,detectHeight);
-			IntegerRect rect=rects.remove(0);
+			List<SimpleRect> rects=loadRect(lastImageData.getWidth(),lastImageData.getHeight(),pdata.getFileName(),detectWidth,detectHeight);
+			SimpleRect rect=rects.remove(0);
 			if(rects.size()==0){
 				removeAndReplace(pdata);
 					//remove permanently,if neee use,do refrash page

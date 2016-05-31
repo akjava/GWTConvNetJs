@@ -4,7 +4,7 @@ import java.util.List;
 
 import com.akjava.gwt.comvnetjs.client.RectGenerator;
 import com.akjava.gwt.comvnetjs.client.worker.MakeRectParam;
-import com.akjava.lib.common.graphics.Rect;
+import com.akjava.lib.common.graphics.IntRect;
 import com.google.gwt.core.client.EntryPoint;
 import com.google.gwt.core.client.JavaScriptObject;
 import com.google.gwt.core.client.JsArrayString;
@@ -34,9 +34,9 @@ public class MakeRect extends JsDedicatedWorkerGlobalScope implements EntryPoint
     
     public final  static void doReceiveMessage(JavaScriptObject object){
     	MakeRectParam param=object.cast();
-    	List<Rect> rects=RectGenerator.generateRect(param.getImageW(),param.getImageH(), param.getStepScale(), param.getScale_factor(),param.getMinW(),param.getMinH(),param.getMin_scale());
+    	List<IntRect> rects=RectGenerator.generateRect(param.getImageW(),param.getImageH(), param.getStepScale(), param.getScale_factor(),param.getMinW(),param.getMinH(),param.getMin_scale());
     	JsArrayString rectsString=JsArrayString.createArray().cast();
-    	for(Rect rect:rects){
+    	for(IntRect rect:rects){
     		rectsString.push(rect.toKanmaString());
     	}
     	doPostMessage(param.getName(),rectsString);

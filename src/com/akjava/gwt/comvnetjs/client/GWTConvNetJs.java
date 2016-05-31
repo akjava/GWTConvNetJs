@@ -59,8 +59,8 @@ import com.akjava.gwt.webworker.client.WorkerPool;
 import com.akjava.gwt.webworker.client.WorkerPool.HashedParameterData;
 import com.akjava.gwt.webworker.client.WorkerPool.WorkerPoolData;
 import com.akjava.gwt.webworker.client.WorkerPoolMultiCaller;
-import com.akjava.lib.common.graphics.IntegerRect;
-import com.akjava.lib.common.graphics.Rect;
+import com.akjava.lib.common.graphics.SimpleRect;
+import com.akjava.lib.common.graphics.IntRect;
 import com.akjava.lib.common.io.FileType;
 import com.akjava.lib.common.utils.FileNames;
 import com.akjava.lib.common.utils.ListUtils;
@@ -1437,19 +1437,19 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		return convertedVol;
 	}
 	
-	private List<HaarRect> rectToHaarRect(List<Rect> rects){
+	private List<HaarRect> rectToHaarRect(List<IntRect> rects){
 		if(rects==null){
 			return null;
 		}
 		List<HaarRect> result=Lists.newArrayList();
-		for(Rect rect:rects){
+		for(IntRect rect:rects){
 			result.add( HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));
 		}
 		return result;
 	}
 	
 	private Map<String,List<Rect2>> testMap=new HashMap<String, List<Rect2>>();
-	private Map<String,List<Rect>> testMap2=new HashMap<String, List<Rect>>();
+	private Map<String,List<IntRect>> testMap2=new HashMap<String, List<IntRect>>();
 	
 	private JsHash tmpHash=JavaScriptObject.createObject().cast();
 	private static class JsHash extends JavaScriptObject{
@@ -1835,18 +1835,18 @@ detectWorkerBt = new ExecuteButton("Detect Worker",false) {
 		*/
 		
 		//loadZip();//need this
-		List<Rect> rects=Lists.newArrayList();
+		List<IntRect> rects=Lists.newArrayList();
 		//calculare ratio
 		for(CVImageData data:positivesZip.getDatas()){
-			for(Rect rect:data.getRects()){
+			for(IntRect rect:data.getRects()){
 				rects.add(rect);
 			}
 		}
 		
-		List<Double> ratios=Lists.newArrayList(FluentIterable.from(rects).transform(new Function<Rect, Double>() {
+		List<Double> ratios=Lists.newArrayList(FluentIterable.from(rects).transform(new Function<IntRect, Double>() {
 
 			@Override
-			public Double apply(Rect input) {
+			public Double apply(IntRect input) {
 				
 				return (double)input.getWidth()/input.getHeight();
 			}
@@ -2026,10 +2026,10 @@ BrowserUtils.loadBinaryFile(positiveImageName,new LoadBinaryListener() {
 	
 	
 	//for studyin conitue change similar image to different
-	Rect zeroRect=new Rect(0,0,0,0);
-	List<Rect> continuRect=Lists.newArrayList(
-			new Rect(1,0,-1,0),new Rect(0,1,0,-1),new Rect(0,0,-1,0),new Rect(0,0,0,-1),new Rect(1,0,-2,0),new Rect(0,1,0,-2),
-			new Rect(2,0,-2,0),new Rect(0,2,0,-2),new Rect(0,0,-2,0),new Rect(0,0,0,-2),new Rect(2,0,-4,0),new Rect(0,2,0,-4)
+	IntRect zeroRect=new IntRect(0,0,0,0);
+	List<IntRect> continuRect=Lists.newArrayList(
+			new IntRect(1,0,-1,0),new IntRect(0,1,0,-1),new IntRect(0,0,-1,0),new IntRect(0,0,0,-1),new IntRect(1,0,-2,0),new IntRect(0,1,0,-2),
+			new IntRect(2,0,-2,0),new IntRect(0,2,0,-2),new IntRect(0,0,-2,0),new IntRect(0,0,0,-2),new IntRect(2,0,-4,0),new IntRect(0,2,0,-4)
 			);
 	int offsetRectContinueIndex;
 	
@@ -2128,7 +2128,7 @@ charged searchpassedImage
 		int negative=0;
 		
 		int ignored=0;
-		Rect offsetRect=null;
+		IntRect offsetRect=null;
 		
 		if(initial){
 		offsetRectContinueIndex=0;	
@@ -2149,7 +2149,7 @@ charged searchpassedImage
 		
 		Stopwatch watch2=Stopwatch.createStarted();
 		
-		Rect changedRect=new Rect();
+		IntRect changedRect=new IntRect();
 		for(CVImageData pdata:positivesZip.getDatas()){
 			
 			Optional<ImageElement> imageElementOptional=positivesZip.getImageElement(pdata);
@@ -2163,7 +2163,7 @@ charged searchpassedImage
 			ImageElement baseImage=imageElementOptional.get();
 			//generate canvas for image
 			
-			for(Rect rect:pdata.getRects()){
+			for(IntRect rect:pdata.getRects()){
 				String path=pdata.getFileName()+"#"+rect.toKanmaString().replace(",", "-");
 				if(droppedList.contains(path)){
 					//LogUtils.log("ignore-train:"+path);
@@ -2481,7 +2481,7 @@ charged searchpassedImage
 			ImageElement baseImage=imageElementOptional.get();
 			
 			//generate canvas for image
-			for(Rect rect:pdata.getRects()){
+			for(IntRect rect:pdata.getRects()){
 				RectCanvasUtils.crop(baseImage, rect, sharedCanvas);
 				CanvasUtils.clear(resizedCanvas);
 				
@@ -2536,9 +2536,9 @@ charged searchpassedImage
 	 */
 	
 	
-	private List<ImageData> createImageDatas(Canvas imageCanvas,List<Rect> rects){
+	private List<ImageData> createImageDatas(Canvas imageCanvas,List<IntRect> rects){
 		List<ImageData> result=Lists.newArrayList();
-		for(Rect rect:rects){
+		for(IntRect rect:rects){
 		RectCanvasUtils.crop(imageCanvas, rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight(), sharedCanvas);
 		
 		CanvasUtils.clear(resizedCanvas);//for transparent image
@@ -2559,7 +2559,7 @@ charged searchpassedImage
 	private static  Stopwatch bench5=Stopwatch.createUnstarted();
 	
 	
-	private void createGrayScaleImageDatas(final Canvas canvasToDrawResult,List<Rect> rects){
+	private void createGrayScaleImageDatas(final Canvas canvasToDrawResult,List<IntRect> rects){
 		final Stopwatch watch=Stopwatch.createStarted();
 		final Stopwatch watch2=Stopwatch.createUnstarted();
 		final int totalSize=2;
@@ -2569,15 +2569,15 @@ charged searchpassedImage
 			eachSize++;
 		}
 		
-		final List<List<Rect>> partitioned=Lists.partition(rects, eachSize);
-		final Map<String,List<Rect>> tmpMap=new HashMap<String, List<Rect>>();
+		final List<List<IntRect>> partitioned=Lists.partition(rects, eachSize);
+		final Map<String,List<IntRect>> tmpMap=new HashMap<String, List<IntRect>>();
 		
 		
 		WorkerPool cropImageWorkerPool=new WorkerPool(totalSize,"/workers/cropgrayscale.js") {
 			int extracted;
 			
 			//List<Uint8ArrayNative> uintArray=Lists.newArrayList();
-			List<Rect> rectArray=Lists.newArrayList();
+			List<IntRect> rectArray=Lists.newArrayList();
 			List<JsArrayNumber> imageDatas=Lists.newArrayList();
 			@Override
 			public void doInitialize(){
@@ -2586,7 +2586,7 @@ charged searchpassedImage
 			@Override
 			public void extractData(WorkerPoolData data, MessageEvent event) {
 				
-				List<Rect> rects=tmpMap.get(data.getParameterString(null));
+				List<IntRect> rects=tmpMap.get(data.getParameterString(null));
 				rectArray.addAll(rects);
 				
 				JsArray<Uint8ArrayNative> arrays=Worker2.getDataAsJavaScriptObject(event).cast();
@@ -2658,13 +2658,13 @@ charged searchpassedImage
 		
 		
 		
-		WorkerPoolMultiCaller<List<Rect>> multiCaller=new WorkerPoolMultiCaller<List<Rect>>(cropImageWorkerPool,partitioned) {
+		WorkerPoolMultiCaller<List<IntRect>> multiCaller=new WorkerPoolMultiCaller<List<IntRect>>(cropImageWorkerPool,partitioned) {
 			
 			@Override
-			public WorkerPoolData convertToData(List<Rect> rects) {
+			public WorkerPoolData convertToData(List<IntRect> rects) {
 				watch2.start();
 				JsArray<HaarRect> array=JsArray.createArray().cast();
-				for(Rect rect:rects){
+				for(IntRect rect:rects){
 					array.push(HaarRect.create(rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight()));
 				}
 				watch2.stop();
@@ -2703,10 +2703,10 @@ charged searchpassedImage
 	private class RectAndImageData{
 		
 		
-		Rect rect;
+		IntRect rect;
 		JsArrayNumber number;
 		//ImageData imageData;
-		public RectAndImageData(Rect rect, JsArrayNumber number) {
+		public RectAndImageData(IntRect rect, JsArrayNumber number) {
 		//public RectAndImageData(Rect rect, ImageData imageData) {
 			super();
 			this.rect = rect;
@@ -2720,7 +2720,7 @@ charged searchpassedImage
 	private ImageData sharedImageData;
 	
 	
-	protected void detectImageWithWorker(final Canvas canvas,final List<Rect> rects) {
+	protected void detectImageWithWorker(final Canvas canvas,final List<IntRect> rects) {
 		final int totalSize=32;
 		
 		
@@ -2731,7 +2731,7 @@ charged searchpassedImage
 		
 		
 		
-		final List<List<Rect>> partitioned=Lists.partition(rects, eachSize);
+		final List<List<IntRect>> partitioned=Lists.partition(rects, eachSize);
 		
 		
 		final Stopwatch watch=Stopwatch.createStarted();
@@ -2798,17 +2798,17 @@ charged searchpassedImage
 		
 		
 				
-		WorkerPoolMultiCaller<List<Rect>> multiCaller=new WorkerPoolMultiCaller<List<Rect>>(workerPool,partitioned) {
+		WorkerPoolMultiCaller<List<IntRect>> multiCaller=new WorkerPoolMultiCaller<List<IntRect>>(workerPool,partitioned) {
 			
 			@Override
-			public WorkerPoolData convertToData(List<Rect> data) {
+			public WorkerPoolData convertToData(List<IntRect> data) {
 				//LogUtils.log("data-converted:"+data.size());
 				watch2.start();
 				
 				JsArray<HaarRect> rectArray= JsArray.createArray().cast();
 				
 				for(int i=0;i<data.size();i++){
-					Rect rect=data.get(i);
+					IntRect rect=data.get(i);
 					rectArray.push(HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));
 				}
 				watch2.stop();
@@ -2864,7 +2864,7 @@ charged searchpassedImage
 		
 	}
 	
-	protected void onEndCreateGrayScaleImageDatas(final Canvas canvas,final List<Rect> rectList, List<JsArrayNumber> imageDatas) {
+	protected void onEndCreateGrayScaleImageDatas(final Canvas canvas,final List<IntRect> rectList, List<JsArrayNumber> imageDatas) {
 		if(rectList.size()!=imageDatas.size()){
 			LogUtils.log("Invalid result datas.quit. rects="+rectList.size()+",imageDatas="+imageDatas.size());
 			return;
@@ -2956,7 +2956,7 @@ charged searchpassedImage
 				JsArray<JsArrayNumber> array= JsArray.createArray().cast();
 				for(int i=0;i<data.size();i++){
 					RectAndImageData rdata=data.get(i);
-					Rect rect=rdata.rect;
+					IntRect rect=rdata.rect;
 					rectArray.push(HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));
 					
 					array.push(rdata.number);
@@ -3010,7 +3010,7 @@ charged searchpassedImage
 	 * @param imageDatas
 	 */
 	
-	protected void onEndCreateGrayScaleImageDatasWithImageData(final Canvas canvas,final List<Rect> rectList, List<ImageData> imageDatas) {
+	protected void onEndCreateGrayScaleImageDatasWithImageData(final Canvas canvas,final List<IntRect> rectList, List<ImageData> imageDatas) {
 		if(rectList.size()!=imageDatas.size()){
 			LogUtils.log("Invalid result datas.quit. rects="+rectList.size()+",imageDatas="+imageDatas.size());
 			return;
@@ -3117,7 +3117,7 @@ charged searchpassedImage
 					//successPosPanel.add(new Image(resizedCanvas.toDataUrl()));
 					
 					array.push(ImageDataUtils.copyFrom(resizedCanvas));
-					Rect rect=rdata.rect;
+					IntRect rect=rdata.rect;
 					rectArray.push(HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));
 				}
 				watch2.stop();
@@ -3166,7 +3166,7 @@ charged searchpassedImage
 		double min_scale=detectInitialScale.getValue();
 		
 		checkState(minW>0 && minH>0,"invaid detect-size:"+minW+"x"+minH);
-		List<Rect> rects=RectGenerator.generateRect(canvas.getCoordinateSpaceWidth(),canvas.getCoordinateSpaceHeight(), stepScale, scale_factor,minW,minH,min_scale);
+		List<IntRect> rects=RectGenerator.generateRect(canvas.getCoordinateSpaceWidth(),canvas.getCoordinateSpaceHeight(), stepScale, scale_factor,minW,minH,min_scale);
 		
 		
 		detectImageWithWorker(canvas,rects);
@@ -3255,9 +3255,9 @@ charged searchpassedImage
 	
 	
 	
-	private class ConfidenceRect extends Rect implements Comparable<ConfidenceRect>{
+	private class ConfidenceRect extends IntRect implements Comparable<ConfidenceRect>{
 		private double confidence;
-		public ConfidenceRect(Rect rect){
+		public ConfidenceRect(IntRect rect){
 			super(rect);
 		}
 
@@ -3296,7 +3296,7 @@ charged searchpassedImage
         double step_x = (0.5 * scale + 1.5)*stepScale;
         double step_y = step_x;
         
-        Rect sharedRect=new Rect(0,0,winW,winH);
+        IntRect sharedRect=new IntRect(0,0,winW,winH);
         int endX=imageCanvas.getCoordinateSpaceWidth()-winW;
         int endY=imageCanvas.getCoordinateSpaceHeight()-winH;
         
@@ -3395,7 +3395,7 @@ charged searchpassedImage
 		ImageElement baseImage=imageElementOptional.get();
 		//generate canvas for image
 		
-		for(Rect rect:pdata.getRects()){
+		for(IntRect rect:pdata.getRects()){
 			RectCanvasUtils.crop(baseImage, rect, sharedCanvas);
 			CanvasUtils.clear(resizedCanvas);
 		
@@ -3468,11 +3468,11 @@ charged searchpassedImage
 			
 			int x=getRandom(0,width-randomWidth);
 			int y=getRandom(0,height-randomHeight);
-			Rect r=new Rect(x,y,randomWidth,randomHeight);//more varaerty of rect
+			IntRect r=new IntRect(x,y,randomWidth,randomHeight);//more varaerty of rect
 			//LogUtils.log(r);
 			
 			boolean safe=true;
-			for(Rect rect:data.getRects()){
+			for(IntRect rect:data.getRects()){
 				//LogUtils.log(r.toString()+" vs "+rect.toString());
 				if(rect.collision(r)){
 					safe=false;
@@ -3683,7 +3683,7 @@ charged searchpassedImage
 			
 			ImageElement testImage=imageElementOptional.get();
 			//generate canvas for image
-			Rect rect=pdata.getRects().get(0);
+			IntRect rect=pdata.getRects().get(0);
 			RectCanvasUtils.crop(testImage, rect, sharedCanvas);
 			CanvasUtils.clear(resizedCanvas);
 			resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
@@ -3941,7 +3941,7 @@ public TestResult doTestCascadeReal(CascadeNet cascade,boolean testPositives){
 			
 			ImageElement testImage=imageElementOptional.get();
 			//generate canvas for image
-			Rect rect=pdata.getRects().get(0);
+			IntRect rect=pdata.getRects().get(0);
 			RectCanvasUtils.crop(testImage, rect, sharedCanvas);
 			CanvasUtils.clear(resizedCanvas);
 			resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
@@ -4231,7 +4231,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 				Canvas grayscale=CanvasUtils.convertToGrayScale(sharedCanvas, null);
 				final ImageData grayScaleImageData=ImageDataUtils.copyFrom(grayscale);
 				
-				List<IntegerRect> rects=negativeControler.loadRect(element.get(), data.getFileName(),minW,minH);
+				List<SimpleRect> rects=negativeControler.loadRect(element.get(), data.getFileName(),minW,minH);
 				
 				if(!negativeControler.isAllowRandom()){
 					negativeControler.clearRect(data.getFileName());//don't store
@@ -4240,7 +4240,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 				//convert to rects TODO method? #HaarRect.from(List<Rect)
 				JsArray<HaarRect> rectArray= JsArray.createArray().cast();
 				for(int i=0;i<rects.size();i++){
-					IntegerRect rect=rects.get(i);
+					SimpleRect rect=rects.get(i);
 					rectArray.push(HaarRect.create(rect.getX(),rect.getY(),rect.getWidth(),rect.getHeight()));
 				}
 				
@@ -4318,7 +4318,7 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 			
 			
 			//generate canvas for image
-			Rect rect=pdata.getRects().get(0);
+			IntRect rect=pdata.getRects().get(0);
 			RectCanvasUtils.crop(testImage, rect, sharedCanvas);
 			CanvasUtils.clear(resizedCanvas);
 			resizedCanvas.getContext2d().drawImage(sharedCanvas.getCanvasElement(), 0, 0,sharedCanvas.getCoordinateSpaceWidth(),sharedCanvas.getCoordinateSpaceHeight(),0,0,resizedCanvas.getCoordinateSpaceWidth(),resizedCanvas.getCoordinateSpaceHeight());
@@ -4761,11 +4761,11 @@ Stopwatch searchWatch=Stopwatch.createUnstarted();
 			
 			int x=getRandom(0,width-randomWidth);
 			int y=getRandom(0,height-randomHeight);
-			Rect r=new Rect(x,y,randomWidth,randomHeight);//more varaerty of rect
+			IntRect r=new IntRect(x,y,randomWidth,randomHeight);//more varaerty of rect
 			//LogUtils.log(r);
 			
 			boolean safe=true;
-			for(Rect rect:pdata.getRects()){
+			for(IntRect rect:pdata.getRects()){
 				//LogUtils.log(r.toString()+" vs "+rect.toString());
 				if(rect.collision(r)){
 					safe=false;

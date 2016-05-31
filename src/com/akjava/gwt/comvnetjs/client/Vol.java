@@ -13,13 +13,19 @@ public final void set(int x,int y,int[] depthValues){
 		set(x,y,i,depthValues[i]);
 	}
 }
-
+//don't miss set 1,1,[]double .oftern happen
 public final void set(int x,int y,double[] depthValues){
 	for(int i=0;i<depthValues.length;i++){
 		set(x,y,i,depthValues[i]);
 	}
 }
 
+//usually case
+public final void setDepth(double[] depthValues){
+	for(int i=0;i<depthValues.length;i++){
+		set(0,0,i,depthValues[i]);
+	}
+}
 
 public   final native double get(int x,int y,int d) /*-{
 return this.get(x,y,d);
