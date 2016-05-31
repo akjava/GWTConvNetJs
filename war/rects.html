@@ -1,0 +1,30 @@
+<html>
+<head>
+<script type="text/javascript" src="rects.js">
+</script>
+<script type="text/javascript">
+function doIt(){
+	var canvas = document.getElementById('test');
+	var context = canvas.getContext('2d');
+	var rects=generate(200,200,10,1.4,48,48,1.0);
+	console.log(rects.length);
+	var size=rects.length;
+	for(i=0;i<size;i++){
+		
+		var rect=rects[i];
+		
+		context.rect(rect.x, rect.y, rect.width, rect.height);
+		context.stroke();
+		
+	}
+	
+}
+</script>
+</head>
+<body>
+<button onclick="doIt();">Test</button><br/>
+<canvas id="test" width="200" height="200">
+</canvas>
+
+</body>
+</html>

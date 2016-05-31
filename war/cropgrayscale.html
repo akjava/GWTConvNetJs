@@ -1,0 +1,58 @@
+<html>
+<head>
+<script type="text/javascript">
+function test(){
+	
+	var canvas = document.getElementById('example');
+	var context = example.getContext('2d');
+	
+	context.fillStyle="#FF0000";
+	context.fillRect(50,50,50,50);
+	
+	var imageData=context.getImageData(0,0,200,200);
+	
+	var r={x:50,y:50,width:50,height:50};
+	
+	
+	var worker=new Worker('workers/cropgrayscale.js');
+	
+	
+	
+	worker.onmessage=function(e){
+		var array=e.data;
+		for(i=0;i<array.length;i++){
+			
+			var newData=context.createImageData(r.width,r.height);
+			//var newCanvas = document.createElement('canvas');
+			//newCanvas.setAttribute('width', r.width);
+			//newCanvas.setAttribute('height', r.height);
+			console.log(array[i]);
+			newData.data.set(array[i]);
+			for(x=0;x<newData.width;x++){
+				for(y=0;y<newData.height;y++){
+					//console.log(newData.data[(x+y*newData.width)*4]);
+				}
+			}
+			console.log(newData.data);
+			
+			
+			//newCanvas.etContext('2d').putImageData(newData,0,0);
+			//document.getElementById('result').appendChild(newCanvas);
+		}
+		//TODO draw rects?
+	};
+
+	var data={rects:[r],imageData:imageData};
+	
+	worker.postMessage(data);
+	
+}
+</script>
+</head>
+
+<button onclick="test();">test</button><br/>
+<canvas id="example" width="200" height="200">
+</canvas>
+<div id="result"></div>
+
+</html>
